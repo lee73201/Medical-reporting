@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Lab Test Portal Mobile Prototype</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="prototype-shell" aria-label="Healthcare mobile app prototype">
+      <section class="phone" aria-live="polite">
+        <div class="status-bar">
+          <span>09:52</span>
+          <span class="status-icons">5G 100%</span>
+        </div>
+
+        <section class="screen active auth-screen" id="login" data-title="Login">
+          <div class="brand-hero" aria-hidden="true">
+            <div class="brand-mark">+</div>
+            <div class="brand-icons">
+              <span>Health</span>
+              <span>Monitor</span>
+              <span>Secure</span>
+            </div>
+            <h1>HealthConnect</h1>
+            <p>Patient Health Management Portal</p>
+            <svg viewBox="0 0 390 56" role="img" aria-label="Heartbeat line">
+              <path d="M0 34h80l12-18 18 36 18-34h64l12-18 18 48 18-38h70l12-18 18 34h50" />
+            </svg>
+          </div>
+          <div class="trust-banner">Secure access to your health data</div>
+          <div class="screen-copy">
+            <h1>Welcome Back</h1>
+            <p class="muted">Sign in to continue to your health dashboard</p>
+          </div>
+          <form class="auth-form" id="login-form">
+            <label class="field">
+              <span>User ID</span>
+              <span class="input-wrap">
+                <span class="field-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z"/></svg>
+                </span>
+                <input placeholder="Enter your User ID" value="" autocomplete="username">
+              </span>
+            </label>
+            <label class="field">
+              <span>Password</span>
+              <span class="input-wrap">
+                <span class="field-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0 1 10 0v3M6 11h12v10H6z"/></svg>
+                </span>
+                <input type="password" placeholder="Enter your password" value="" autocomplete="current-password">
+                <span class="field-icon muted-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
+                </span>
+              </span>
+            </label>
+            <div class="form-actions-row">
+              <button class="link-btn" type="button" data-go="forgot">Forgot your password?</button>
+            </div>
+            <button class="primary-btn" type="submit">Sign In Securely <span aria-hidden="true">></span></button>
+          </form>
+        </section>
+
+        <section class="screen auth-screen" id="forgot" data-title="Password Recovery">
+          <button class="icon-btn back-btn" data-go="login" aria-label="Back to login">
+            <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <div class="screen-copy compact">
+            <p class="eyebrow">Account support</p>
+            <h1>Reset password</h1>
+            <p class="muted">Enter your email or phone number. We will send a secure verification code.</p>
+          </div>
+          <form class="auth-form" id="recovery-form">
+            <label class="field">
+              <span>Email or phone</span>
+              <span class="input-wrap">
+                <span class="field-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M4 6h16v12H4zM4 7l8 6 8-6"/></svg>
+                </span>
+                <input placeholder="name@example.com">
+              </span>
+            </label>
+            <button class="primary-btn" type="submit">Send verification</button>
+            <p class="feedback" id="recovery-feedback" role="status"></p>
+          </form>
+        </section>
+
+        <section class="screen auth-screen" id="verify" data-title="Verify Code">
+          <button class="icon-btn back-btn" data-go="forgot" aria-label="Back">
+            <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <div class="screen-copy compact">
+            <p class="eyebrow">Verification</p>
+            <h1>Enter code</h1>
+            <p class="muted">A 6-digit code was sent to your registered contact.</p>
+          </div>
+          <div class="otp-grid" aria-label="One time password">
+            <input maxlength="1" value="2">
+            <input maxlength="1" value="8">
+            <input maxlength="1" value="4">
+            <input maxlength="1" value="1">
+            <input maxlength="1" value="0">
+            <input maxlength="1" value="6">
+          </div>
+          <button class="primary-btn" data-go="reset">Verify code</button>
+          <button class="link-btn wide" type="button">Resend code</button>
+        </section>
+
+        <section class="screen auth-screen" id="reset" data-title="New Password">
+          <button class="icon-btn back-btn" data-go="verify" aria-label="Back">
+            <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <div class="screen-copy compact">
+            <p class="eyebrow">Final step</p>
+            <h1>Create new password</h1>
+            <p class="muted">Use at least 8 characters with letters and numbers.</p>
+          </div>
+          <form class="auth-form" id="reset-form">
+            <label class="field">
+              <span>New password</span>
+              <span class="input-wrap">
+                <span class="field-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0 1 10 0v3M6 11h12v10H6z"/></svg>
+                </span>
+                <input type="password" value="newpass123">
+              </span>
+            </label>
+            <button class="primary-btn" type="submit">Update password</button>
+            <p class="feedback success">Password updated. You can now sign in securely.</p>
+          </form>
+        </section>
+
+        <section class="screen app-screen" id="home" data-title="Home">
+          <header class="home-header">
+            <div>
+              <p class="eyebrow neutral">Monday, Mar 30</p>
+              <h1>Good Morning, Mr. Wang</h1>
+            </div>
+            <button class="bell-btn" aria-label="Notifications">
+              <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
+              <span></span>
+            </button>
+          </header>
+          <article class="patient-gradient-card">
+            <span class="patient-icon">
+              <svg viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z"/></svg>
+            </span>
+            <div>
+              <p>Patient</p>
+              <h2>Mr. Wang</h2>
+              <span>ID: 1234567 - Age: 70</span>
+            </div>
+            <strong>></strong>
+          </article>
+          <article class="soft-card calendar-panel">
+            <div class="section-heading">
+              <div>
+                <p class="muted small">2026</p>
+                <h2>March 30</h2>
+              </div>
+              <button class="link-btn" data-go="reports">Hide</button>
+            </div>
+            <div class="calendar-title"><button><</button><strong>Mar 2026</strong><button>></button></div>
+            <div class="calendar-grid compact-calendar" aria-label="Appointment calendar">
+              <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+              <button>1</button><button>2</button><button>3</button><button>4</button><button>5</button><button>6</button><button>7</button>
+              <button>8</button><button>9</button><button>10</button><button>11</button><button>12</button><button>13</button><button>14</button>
+              <button>15</button><button>16</button><button>17</button><button>18</button><button>19</button><button>20</button><button>21</button>
+              <button>22</button><button>23</button><button>24</button><button>25</button><button>26</button><button>27</button><button>28</button>
+              <button>29</button><button class="selected">30</button><button>31</button>
+            </div>
+          </article>
+          <h2 class="section-title">Quick Actions</h2>
+          <div class="quick-action-grid">
+            <button class="quick-action-card"><span class="qa-icon blue">+</span><strong>Appointments</strong></button>
+            <button class="quick-action-card"><span class="qa-icon green">$</span><strong>Payments</strong></button>
+            <button class="quick-action-card"><span class="qa-icon purple">Rx</span><strong>Medicine</strong></button>
+            <button class="quick-action-card active" data-go="overview"><span class="qa-icon light">Lab</span><strong>Lab Reports</strong></button>
+          </div>
+        </section>
+
+        <section class="screen app-screen" id="overview" data-title="Lab Overview">
+          <header class="page-header">
+            <button class="icon-btn" data-go="home" aria-label="Back home">
+              <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <h1>Lab Test Overview</h1>
+            <button class="icon-btn plain" aria-label="More">
+              <svg viewBox="0 0 24 24"><path d="M12 5h.01M12 12h.01M12 19h.01"/></svg>
+            </button>
+          </header>
+          <article class="patient-gradient-card compact-patient">
+            <span class="patient-icon">
+              <svg viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z"/></svg>
+            </span>
+            <div>
+              <p>Patient</p>
+              <h2>Mr. Wang</h2>
+              <span>ID: 123XXXX - Age: 70</span>
+            </div>
+          </article>
+          <div class="lab-stats">
+            <article><strong>11</strong><span>Total Tests</span></article>
+            <article><strong class="green-text">8</strong><span>Normal</span></article>
+            <article><strong class="red-text">3</strong><span>Abnormal</span></article>
+          </div>
+          <article class="soft-card trend-preview">
+            <div>
+              <h2>Blood Pressure Trend</h2>
+              <p class="muted">Weekly Changes - Systolic & Diastolic</p>
+            </div>
+            <div class="mini-chart-wrap">
+              <svg class="line-chart-mini" viewBox="0 0 190 110" aria-label="Blood pressure trend">
+                <path class="gridline" d="M8 18h160M8 58h160M8 98h160"/>
+                <path class="line-blue" d="M18 70L52 66L86 58L120 52L154 44"/>
+                <path class="line-soft" d="M18 92L52 88L86 84L120 80L154 72"/>
+                <g class="chart-dots"><circle cx="18" cy="70" r="4"/><circle cx="52" cy="66" r="4"/><circle cx="86" cy="58" r="4"/><circle cx="120" cy="52" r="4"/><circle cx="154" cy="44" r="4"/></g>
+              </svg>
+              <div class="donut-chart" aria-label="Normal and abnormal distribution"></div>
+            </div>
+          </article>
+          <article class="soft-card alert-table-card">
+            <div class="section-heading">
+              <h2>Recent Alerts</h2>
+              <span class="red-text">3 abnormal</span>
+            </div>
+            <button class="alert-table-row" data-go="trend">
+              <span>2026.03.28</span><strong>Fasting Glucose</strong><em>High(7.4)</em>
+            </button>
+            <button class="alert-table-row" data-go="trend">
+              <span>2026.03.25</span><strong>LDL Cholesterol</strong><em>High(4.2)</em>
+            </button>
+            <button class="alert-table-row" data-go="insight">
+              <span>2026.03.20</span><strong>Blood Pressure</strong><em class="orange-text">Alert</em>
+            </button>
+          </article>
+          <p class="note-banner">Values in RED are outside the healthy range. Tap any row for detailed analysis and advice.</p>
+        </section>
+
+        <section class="screen app-screen" id="reports" data-title="Recent Reports">
+          <header class="app-header">
+            <button class="icon-btn" data-go="overview" aria-label="Back">
+              <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <div class="header-title">
+              <p class="eyebrow">March 2026</p>
+              <h1>Recent Reports</h1>
+            </div>
+            <button class="icon-btn" aria-label="Calendar">
+              <svg viewBox="0 0 24 24"><path d="M7 3v4M17 3v4M4 9h16M5 5h14v16H5z"/></svg>
+            </button>
+          </header>
+          <nav class="segmented">
+            <button data-go="overview">Overview</button>
+            <button class="active" data-go="reports">Recent</button>
+            <button data-go="abnormal">Abnormal</button>
+          </nav>
+          <article class="calendar-card soft-card">
+            <div class="calendar-head">
+              <strong>Mon, Mar 30</strong>
+              <span>OK</span>
+            </div>
+            <div class="calendar-grid" aria-label="March 2026 calendar">
+              <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+              <button>1</button><button>2</button><button>3</button><button>4</button><button>5</button><button>6</button><button>7</button>
+              <button>8</button><button>9</button><button>10</button><button>11</button><button>12</button><button>13</button><button>14</button>
+              <button>15</button><button>16</button><button>17</button><button>18</button><button>19</button><button>20</button><button>21</button>
+              <button>22</button><button>23</button><button>24</button><button>25</button><button>26</button><button>27</button><button>28</button>
+              <button>29</button><button class="selected">30</button><button>31</button>
+            </div>
+          </article>
+          <article class="soft-card">
+            <h2>Report list</h2>
+            <button class="report-row" data-go="abnormal">
+              <span class="doc-icon">LAB</span>
+              <span>
+                <strong>Blood Biochemistry</strong>
+                <small>Date: 2026.03.28 - View details</small>
+              </span>
+              <span class="chevron">></span>
+            </button>
+            <button class="report-row" data-go="healthy">
+              <span class="doc-icon good">OK</span>
+              <span>
+                <strong>UFEME with Dipstick</strong>
+                <small>Date: 2026.03.26 - No abnormal indicator</small>
+              </span>
+              <span class="chevron">></span>
+            </button>
+          </article>
+        </section>
+
+        <section class="screen app-screen" id="abnormal" data-title="Abnormal Indicators">
+          <header class="app-header">
+            <button class="icon-btn" data-go="overview" aria-label="Back">
+              <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <div class="header-title">
+              <p class="eyebrow">Selected report</p>
+              <h1>Abnormal Indicators</h1>
+            </div>
+            <span class="badge alert">Review</span>
+          </header>
+          <nav class="segmented">
+            <button data-go="overview">Overview</button>
+            <button data-go="reports">Recent</button>
+            <button class="active" data-go="abnormal">Abnormal</button>
+          </nav>
+          <article class="soft-card warning-note">
+            <strong>Note</strong>
+            <p>Values marked in red are outside the healthy range. Tap a row for explanation and advice.</p>
+          </article>
+          <article class="soft-card">
+            <div class="table-row table-head">
+              <span>Name</span><span>Result</span><span>Reference</span>
+            </div>
+            <button class="table-row" data-go="trend">
+              <span>Red Blood Cell Count</span><strong>4.33</strong><small>4.32 - 5.72</small>
+            </button>
+            <button class="table-row danger" data-go="trend">
+              <span>Hemoglobin</span><strong>188</strong><small>135 - 175 g/L</small>
+            </button>
+            <button class="table-row danger" data-go="trend">
+              <span>Fasting Glucose</span><strong>7.4</strong><small>3.9 - 6.1 mmol/L</small>
+            </button>
+            <button class="table-row danger" data-go="insight">
+              <span>White Blood Cell Count</span><strong>12.0</strong><small>4.0 - 11.0</small>
+            </button>
+          </article>
+        </section>
+
+        <section class="screen app-screen" id="trend" data-title="Trend">
+          <header class="page-header">
+            <button class="icon-btn" data-go="abnormal" aria-label="Back">
+              <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <h1>Trend Analysis</h1>
+            <button class="icon-btn plain" aria-label="More"><svg viewBox="0 0 24 24"><path d="M12 5h.01M12 12h.01M12 19h.01"/></svg></button>
+          </header>
+          <article class="soft-card select-card">
+            <label class="field">
+              <span>Select Test</span>
+              <span class="input-wrap select-wrap">Fasting Glucose <strong>⌄</strong></span>
+            </label>
+          </article>
+          <div class="value-grid">
+            <article class="soft-card"><p class="muted">Latest Value</p><strong>7.4</strong><span>mmol/L</span></article>
+            <article class="soft-card"><p class="muted">Normal Range</p><strong class="green-text">3.9</strong><span>mmol/L</span></article>
+          </div>
+          <article class="soft-card chart-card line-card">
+            <div class="section-heading">
+              <div>
+                <h2>Fasting Glucose</h2>
+                <p class="green-text">Normal: 3.9 - 6.1 mmol/L</p>
+              </div>
+              <button class="chip-control">Month ˅</button>
+            </div>
+            <span class="trend-chip">Gradually increasing</span>
+            <svg class="line-chart-large" viewBox="0 0 310 230" aria-label="Fasting glucose monthly trend">
+              <rect x="38" y="80" width="248" height="86" class="normal-zone"/>
+              <path class="gridline" d="M38 46h248M38 106h248M38 166h248M38 206h248M38 46v160M92 46v160M146 46v160M200 46v160M254 46v160M286 46v160"/>
+              <path class="line-blue" d="M38 152L65 146L92 142L119 132L146 124L173 116L200 104L227 88L254 78L286 66"/>
+              <g class="chart-dots"><circle cx="38" cy="152" r="4"/><circle cx="65" cy="146" r="4"/><circle cx="92" cy="142" r="4"/><circle cx="119" cy="132" r="4"/><circle cx="146" cy="124" r="4"/><circle cx="173" cy="116" r="4"/><circle cx="200" cy="104" r="4"/><circle cx="227" cy="88" r="4"/><circle cx="254" cy="78" r="4"/><circle cx="286" cy="66" r="4"/></g>
+              <text x="38" y="224">JAN</text><text x="92" y="224">MAR</text><text x="146" y="224">MAY</text><text x="200" y="224">JUL</text><text x="254" y="224">SEP</text>
+            </svg>
+            <div class="chart-legend"><span class="legend-blue"></span>Fasting Glucose <span class="legend-green"></span>Normal Range</div>
+          </article>
+          <article class="soft-card insight-card">
+            <span class="info-dot">i</span>
+            <div>
+              <h2>Clinical Insight</h2>
+              <p>This suggests your body is having more difficulty processing sugar than it used to.</p>
+            </div>
+            <button class="secondary-btn" data-go="insight">View Full Explanation ></button>
+          </article>
+        </section>
+
+        <section class="screen app-screen" id="insight" data-title="Insights">
+          <header class="page-header">
+            <button class="icon-btn" data-go="trend" aria-label="Back">
+              <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <h1>Insights Hub</h1>
+            <button class="icon-btn plain" aria-label="More"><svg viewBox="0 0 24 24"><path d="M12 5h.01M12 12h.01M12 19h.01"/></svg></button>
+          </header>
+          <article class="soft-card risk-card insight-risk">
+            <h2>Risk Interpretation</h2>
+            <p>Infection and hyperglycemic risk. A result of 7.4 indicates blood sugar is higher than recommended for your age group.</p>
+          </article>
+          <article class="accordion-card"><span>?</span><strong>What does this mean?</strong><em>⌄</em></article>
+          <article class="accordion-card"><span>♡</span><strong>Why does it matter?</strong><em>⌄</em></article>
+          <article class="accordion-card"><span>!</span><strong>What are your suggestions?</strong><em>⌄</em></article>
+          <article class="action-advice">
+            <h2>Recommended Actions</h2>
+            <p>Immediate: Drink plenty of water and avoid sugary snacks/drinks for the next 24 hours.</p>
+            <p>Clinical Follow-up: Schedule a consultation with your doctor within the next 7 days.</p>
+          </article>
+          <article class="advisor-card">
+            <h2>AI Health Advisor</h2>
+            <div class="chat-bubble">Hello Mr. Wang, Could you tell me how you are feeling today?</div>
+            <p class="declaration">AI Declaration: This clinical interpretation is generated by AI for educational purposes only. It is not a medical diagnosis. Always consult with your healthcare provider.</p>
+            <div class="quick-chips">
+              <button>I got a fever recently</button>
+              <button>Feeling thirsty and tired</button>
+              <button>I need medication advice</button>
+            </div>
+          </article>
+          <div class="advisor-input"><input placeholder="Ask your AI Health Advisor..."><button>Send</button></div>
+        </section>
+
+        <section class="screen app-screen" id="healthy" data-title="Healthy Report">
+          <header class="app-header">
+            <button class="icon-btn" data-go="reports" aria-label="Back">
+              <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <div class="header-title">
+              <p class="eyebrow">Alternate flow</p>
+              <h1>Healthy Report</h1>
+            </div>
+            <span class="badge good">Normal</span>
+          </header>
+          <article class="soft-card healthy-card">
+            <span class="large-check">+</span>
+            <h2>No abnormal indicators</h2>
+            <p>Your current test results are within healthy ranges. Keep your regular check-up schedule.</p>
+          </article>
+          <article class="soft-card">
+            <div class="table-row table-head">
+              <span>Name</span><span>Result</span><span>Reference</span>
+            </div>
+            <div class="table-row">
+              <span>Hemoglobin</span><strong>144</strong><small>135 - 175 g/L</small>
+            </div>
+            <div class="table-row">
+              <span>Fasting Glucose</span><strong>6.0</strong><small>3.9 - 6.1 mmol/L</small>
+            </div>
+            <div class="table-row">
+              <span>White Blood Cell Count</span><strong>5.8</strong><small>4.0 - 11.0</small>
+            </div>
+          </article>
+        </section>
+
+        <nav class="bottom-nav" aria-label="Primary navigation">
+          <button data-go="overview">
+            <svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg>
+            <span>Overview</span>
+          </button>
+          <button data-go="reports">
+            <svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6"/></svg>
+            <span>Reports</span>
+          </button>
+          <button data-go="abnormal">
+            <svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 4.3 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0z"/></svg>
+            <span>Alerts</span>
+          </button>
+        </nav>
+      </section>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>
