@@ -1,79 +1,79 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Lab Test Portal Mobile Prototype</title>
+    <title>健康检测移动端原型</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
-    <main class="prototype-shell" aria-label="Healthcare mobile app prototype">
+    <main class="prototype-shell" aria-label="健康医疗移动端原型">
       <section class="phone" aria-live="polite">
         <div class="status-bar">
           <span>09:52</span>
           <span class="status-icons">5G 100%</span>
         </div>
 
-        <section class="screen active auth-screen" id="login" data-title="Login">
+        <section class="screen active auth-screen" id="login" data-title="登录">
           <div class="brand-hero" aria-hidden="true">
             <div class="brand-mark">+</div>
             <div class="brand-icons">
-              <span>Health</span>
-              <span>Monitor</span>
-              <span>Secure</span>
+              <span>健康</span>
+              <span>监测</span>
+              <span>安全</span>
             </div>
-            <h1>HealthConnect</h1>
-            <p>Patient Health Management Portal</p>
-            <svg viewBox="0 0 390 56" role="img" aria-label="Heartbeat line">
+            <h1>健管通</h1>
+            <p>患者健康管理平台</p>
+            <svg viewBox="0 0 390 56" role="img" aria-label="心电图线">
               <path d="M0 34h80l12-18 18 36 18-34h64l12-18 18 48 18-38h70l12-18 18 34h50" />
             </svg>
           </div>
-          <div class="trust-banner">Secure access to your health data</div>
+          <div class="trust-banner">安全访问您的健康数据</div>
           <div class="screen-copy">
-            <h1>Welcome Back</h1>
-            <p class="muted">Sign in to continue to your health dashboard</p>
+            <h1>欢迎回来</h1>
+            <p class="muted">登录后继续查看您的健康数据</p>
           </div>
           <form class="auth-form" id="login-form">
             <label class="field">
-              <span>User ID</span>
+              <span>用户 ID</span>
               <span class="input-wrap">
                 <span class="field-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z"/></svg>
                 </span>
-                <input placeholder="Enter your User ID" value="" autocomplete="username">
+                <input placeholder="请输入用户 ID" value="" autocomplete="username">
               </span>
             </label>
             <label class="field">
-              <span>Password</span>
+              <span>密码</span>
               <span class="input-wrap">
                 <span class="field-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0 1 10 0v3M6 11h12v10H6z"/></svg>
                 </span>
-                <input type="password" placeholder="Enter your password" value="" autocomplete="current-password">
+                <input type="password" placeholder="请输入密码" value="" autocomplete="current-password">
                 <span class="field-icon muted-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
                 </span>
               </span>
             </label>
             <div class="form-actions-row">
-              <button class="link-btn" type="button" data-go="forgot">Forgot your password?</button>
+              <button class="link-btn" type="button" data-go="forgot">忘记密码？</button>
             </div>
-            <button class="primary-btn" type="submit">Sign In Securely <span aria-hidden="true">></span></button>
+            <button class="primary-btn" type="submit">安全登录 <span aria-hidden="true">></span></button>
           </form>
         </section>
 
-        <section class="screen auth-screen" id="forgot" data-title="Password Recovery">
-          <button class="icon-btn back-btn" data-go="login" aria-label="Back to login">
+        <section class="screen auth-screen" id="forgot" data-title="找回密码">
+          <button class="icon-btn back-btn" data-go="login" aria-label="返回登录">
             <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
           </button>
           <div class="screen-copy compact">
-            <p class="eyebrow">Account support</p>
-            <h1>Reset password</h1>
-            <p class="muted">Enter your email or phone number. We will send a secure verification code.</p>
+            <p class="eyebrow">账号支持</p>
+            <h1>重置密码</h1>
+            <p class="muted">请输入邮箱或手机号，我们会发送安全验证码。</p>
           </div>
           <form class="auth-form" id="recovery-form">
             <label class="field">
-              <span>Email or phone</span>
+              <span>邮箱或手机号</span>
               <span class="input-wrap">
                 <span class="field-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M4 6h16v12H4zM4 7l8 6 8-6"/></svg>
@@ -81,21 +81,21 @@
                 <input placeholder="name@example.com">
               </span>
             </label>
-            <button class="primary-btn" type="submit">Send verification</button>
+            <button class="primary-btn" type="submit">发送验证码</button>
             <p class="feedback" id="recovery-feedback" role="status"></p>
           </form>
         </section>
 
-        <section class="screen auth-screen" id="verify" data-title="Verify Code">
-          <button class="icon-btn back-btn" data-go="forgot" aria-label="Back">
+        <section class="screen auth-screen" id="verify" data-title="验证码">
+          <button class="icon-btn back-btn" data-go="forgot" aria-label="返回">
             <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
           </button>
           <div class="screen-copy compact">
-            <p class="eyebrow">Verification</p>
-            <h1>Enter code</h1>
-            <p class="muted">A 6-digit code was sent to your registered contact.</p>
+            <p class="eyebrow">身份验证</p>
+            <h1>输入验证码</h1>
+            <p class="muted">6 位验证码已发送至您的注册联系方式。</p>
           </div>
-          <div class="otp-grid" aria-label="One time password">
+          <div class="otp-grid" aria-label="一次性验证码">
             <input maxlength="1" value="2">
             <input maxlength="1" value="8">
             <input maxlength="1" value="4">
@@ -103,22 +103,22 @@
             <input maxlength="1" value="0">
             <input maxlength="1" value="6">
           </div>
-          <button class="primary-btn" data-go="reset">Verify code</button>
-          <button class="link-btn wide" type="button">Resend code</button>
+          <button class="primary-btn" data-go="reset">验证</button>
+          <button class="link-btn wide" type="button">重新发送</button>
         </section>
 
-        <section class="screen auth-screen" id="reset" data-title="New Password">
-          <button class="icon-btn back-btn" data-go="verify" aria-label="Back">
+        <section class="screen auth-screen" id="reset" data-title="新密码">
+          <button class="icon-btn back-btn" data-go="verify" aria-label="返回">
             <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
           </button>
           <div class="screen-copy compact">
-            <p class="eyebrow">Final step</p>
-            <h1>Create new password</h1>
-            <p class="muted">Use at least 8 characters with letters and numbers.</p>
+            <p class="eyebrow">最后一步</p>
+            <h1>创建新密码</h1>
+            <p class="muted">请使用至少 8 位字符，并包含字母和数字。</p>
           </div>
           <form class="auth-form" id="reset-form">
             <label class="field">
-              <span>New password</span>
+              <span>新密码</span>
               <span class="input-wrap">
                 <span class="field-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0 1 10 0v3M6 11h12v10H6z"/></svg>
@@ -126,18 +126,18 @@
                 <input type="password" value="newpass123">
               </span>
             </label>
-            <button class="primary-btn" type="submit">Update password</button>
-            <p class="feedback success">Password updated. You can now sign in securely.</p>
+            <button class="primary-btn" type="submit">更新密码</button>
+            <p class="feedback success">密码已更新，现在可以安全登录。</p>
           </form>
         </section>
 
-        <section class="screen app-screen" id="home" data-title="Home">
+        <section class="screen app-screen" id="home" data-title="首页">
           <header class="home-header">
             <div>
-              <p class="eyebrow neutral">Monday, Mar 30</p>
-              <h1>Good Morning, Mr. Wang</h1>
+              <p class="eyebrow neutral">2026年3月30日 周一</p>
+              <h1>早上好，王先生</h1>
             </div>
-            <button class="bell-btn" aria-label="Notifications">
+            <button class="bell-btn" aria-label="通知">
               <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
               <span></span>
             </button>
@@ -147,9 +147,9 @@
               <svg viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z"/></svg>
             </span>
             <div>
-              <p>Patient</p>
-              <h2>Mr. Wang</h2>
-              <span>ID: 1234567 - Age: 70</span>
+              <p>患者</p>
+              <h2>王先生</h2>
+              <span>ID: 1234567 · 年龄 70</span>
             </div>
             <strong>></strong>
           </article>
@@ -157,13 +157,13 @@
             <div class="section-heading">
               <div>
                 <p class="muted small">2026</p>
-                <h2>March 30</h2>
+                <h2>3月30日</h2>
               </div>
-              <button class="link-btn" data-go="reports">Hide</button>
+              <button class="link-btn" data-go="reports">收起</button>
             </div>
-            <div class="calendar-title"><button><</button><strong>Mar 2026</strong><button>></button></div>
-            <div class="calendar-grid compact-calendar" aria-label="Appointment calendar">
-              <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+            <div class="calendar-title"><button><</button><strong>2026年3月</strong><button>></button></div>
+            <div class="calendar-grid compact-calendar" aria-label="预约日历">
+              <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
               <button>1</button><button>2</button><button>3</button><button>4</button><button>5</button><button>6</button><button>7</button>
               <button>8</button><button>9</button><button>10</button><button>11</button><button>12</button><button>13</button><button>14</button>
               <button>15</button><button>16</button><button>17</button><button>18</button><button>19</button><button>20</button><button>21</button>
@@ -171,22 +171,22 @@
               <button>29</button><button class="selected">30</button><button>31</button>
             </div>
           </article>
-          <h2 class="section-title">Quick Actions</h2>
+          <h2 class="section-title">快捷功能</h2>
           <div class="quick-action-grid">
-            <button class="quick-action-card"><span class="qa-icon blue">+</span><strong>Appointments</strong></button>
-            <button class="quick-action-card"><span class="qa-icon green">$</span><strong>Payments</strong></button>
-            <button class="quick-action-card"><span class="qa-icon purple">Rx</span><strong>Medicine</strong></button>
-            <button class="quick-action-card active" data-go="overview"><span class="qa-icon light">Lab</span><strong>Lab Reports</strong></button>
+            <button class="quick-action-card"><span class="qa-icon blue">+</span><strong>预约管理</strong></button>
+            <button class="quick-action-card"><span class="qa-icon green">¥</span><strong>费用支付</strong></button>
+            <button class="quick-action-card"><span class="qa-icon purple">Rx</span><strong>用药记录</strong></button>
+            <button class="quick-action-card active" data-go="overview"><span class="qa-icon light">检</span><strong>检验报告</strong></button>
           </div>
         </section>
 
-        <section class="screen app-screen" id="overview" data-title="Lab Overview">
+        <section class="screen app-screen" id="overview" data-title="检验概览">
           <header class="page-header">
-            <button class="icon-btn" data-go="home" aria-label="Back home">
+            <button class="icon-btn" data-go="home" aria-label="返回首页">
               <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
             </button>
-            <h1>Lab Test Overview</h1>
-            <button class="icon-btn plain" aria-label="More">
+            <h1>检验概览</h1>
+            <button class="icon-btn plain" aria-label="更多">
               <svg viewBox="0 0 24 24"><path d="M12 5h.01M12 12h.01M12 19h.01"/></svg>
             </button>
           </header>
@@ -195,74 +195,74 @@
               <svg viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z"/></svg>
             </span>
             <div>
-              <p>Patient</p>
-              <h2>Mr. Wang</h2>
-              <span>ID: 123XXXX - Age: 70</span>
+              <p>患者</p>
+              <h2>王先生</h2>
+              <span>ID: 123XXXX · 年龄 70</span>
             </div>
           </article>
           <div class="lab-stats">
-            <article><strong>11</strong><span>Total Tests</span></article>
-            <article><strong class="green-text">8</strong><span>Normal</span></article>
-            <article><strong class="red-text">3</strong><span>Abnormal</span></article>
+            <article><strong>11</strong><span>总项目</span></article>
+            <article><strong class="green-text">8</strong><span>正常</span></article>
+            <article><strong class="red-text">3</strong><span>异常</span></article>
           </div>
           <article class="soft-card trend-preview">
             <div>
-              <h2>Blood Pressure Trend</h2>
-              <p class="muted">Weekly Changes - Systolic & Diastolic</p>
+              <h2>血压趋势</h2>
+              <p class="muted">每周变化 · 收缩压与舒张压</p>
             </div>
             <div class="mini-chart-wrap">
-              <svg class="line-chart-mini" viewBox="0 0 190 110" aria-label="Blood pressure trend">
+              <svg class="line-chart-mini" viewBox="0 0 190 110" aria-label="血压趋势">
                 <path class="gridline" d="M8 18h160M8 58h160M8 98h160"/>
                 <path class="line-blue" d="M18 70L52 66L86 58L120 52L154 44"/>
                 <path class="line-soft" d="M18 92L52 88L86 84L120 80L154 72"/>
                 <g class="chart-dots"><circle cx="18" cy="70" r="4"/><circle cx="52" cy="66" r="4"/><circle cx="86" cy="58" r="4"/><circle cx="120" cy="52" r="4"/><circle cx="154" cy="44" r="4"/></g>
               </svg>
-              <div class="donut-chart" aria-label="Normal and abnormal distribution"></div>
+              <div class="donut-chart" aria-label="正常与异常分布"></div>
             </div>
           </article>
           <article class="soft-card alert-table-card">
             <div class="section-heading">
-              <h2>Recent Alerts</h2>
-              <span class="red-text">3 abnormal</span>
+              <h2>近期异常</h2>
+              <span class="red-text">3 项异常</span>
             </div>
             <button class="alert-table-row" data-go="trend">
-              <span>2026.03.28</span><strong>Fasting Glucose</strong><em>High(7.4)</em>
+              <span>2026.03.28</span><strong>空腹血糖</strong><em>偏高(7.4)</em>
             </button>
             <button class="alert-table-row" data-go="trend">
-              <span>2026.03.25</span><strong>LDL Cholesterol</strong><em>High(4.2)</em>
+              <span>2026.03.25</span><strong>低密度胆固醇</strong><em>偏高(4.2)</em>
             </button>
             <button class="alert-table-row" data-go="insight">
-              <span>2026.03.20</span><strong>Blood Pressure</strong><em class="orange-text">Alert</em>
+              <span>2026.03.20</span><strong>血压</strong><em class="orange-text">提醒</em>
             </button>
           </article>
-          <p class="note-banner">Values in RED are outside the healthy range. Tap any row for detailed analysis and advice.</p>
+          <p class="note-banner">红色数值表示超出参考范围。点击任一项目可查看趋势与建议。</p>
         </section>
 
-        <section class="screen app-screen" id="reports" data-title="Recent Reports">
+        <section class="screen app-screen" id="reports" data-title="近期报告">
           <header class="app-header">
-            <button class="icon-btn" data-go="overview" aria-label="Back">
+            <button class="icon-btn" data-go="overview" aria-label="返回">
               <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
             </button>
             <div class="header-title">
-              <p class="eyebrow">March 2026</p>
-              <h1>Recent Reports</h1>
+              <p class="eyebrow">2026年3月</p>
+              <h1>近期报告</h1>
             </div>
-            <button class="icon-btn" aria-label="Calendar">
+            <button class="icon-btn" aria-label="日历">
               <svg viewBox="0 0 24 24"><path d="M7 3v4M17 3v4M4 9h16M5 5h14v16H5z"/></svg>
             </button>
           </header>
           <nav class="segmented">
-            <button data-go="overview">Overview</button>
-            <button class="active" data-go="reports">Recent</button>
-            <button data-go="abnormal">Abnormal</button>
+            <button data-go="overview">概览</button>
+            <button class="active" data-go="reports">近期</button>
+            <button data-go="abnormal">异常</button>
           </nav>
           <article class="calendar-card soft-card">
             <div class="calendar-head">
-              <strong>Mon, Mar 30</strong>
-              <span>OK</span>
+              <strong>3月30日 周一</strong>
+              <span>正常</span>
             </div>
-            <div class="calendar-grid" aria-label="March 2026 calendar">
-              <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+            <div class="calendar-grid" aria-label="2026年3月日历">
+              <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
               <button>1</button><button>2</button><button>3</button><button>4</button><button>5</button><button>6</button><button>7</button>
               <button>8</button><button>9</button><button>10</button><button>11</button><button>12</button><button>13</button><button>14</button>
               <button>15</button><button>16</button><button>17</button><button>18</button><button>19</button><button>20</button><button>21</button>
@@ -271,188 +271,183 @@
             </div>
           </article>
           <article class="soft-card">
-            <h2>Report list</h2>
+            <h2>报告列表</h2>
             <button class="report-row" data-go="abnormal">
-              <span class="doc-icon">LAB</span>
+              <span class="doc-icon">检</span>
               <span>
-                <strong>Blood Biochemistry</strong>
-                <small>Date: 2026.03.28 - View details</small>
+                <strong>血液生化检查</strong>
+                <small>日期：2026.03.28 · 查看详情</small>
               </span>
               <span class="chevron">></span>
             </button>
             <button class="report-row" data-go="healthy">
               <span class="doc-icon good">OK</span>
               <span>
-                <strong>UFEME with Dipstick</strong>
-                <small>Date: 2026.03.26 - No abnormal indicator</small>
+                <strong>尿液常规检查</strong>
+                <small>日期：2026.03.26 · 暂无异常指标</small>
               </span>
               <span class="chevron">></span>
             </button>
           </article>
         </section>
 
-        <section class="screen app-screen" id="abnormal" data-title="Abnormal Indicators">
+        <section class="screen app-screen" id="abnormal" data-title="异常指标">
           <header class="app-header">
-            <button class="icon-btn" data-go="overview" aria-label="Back">
+            <button class="icon-btn" data-go="overview" aria-label="返回">
               <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
             </button>
             <div class="header-title">
-              <p class="eyebrow">Selected report</p>
-              <h1>Abnormal Indicators</h1>
+              <p class="eyebrow">已选报告</p>
+              <h1>异常指标</h1>
             </div>
-            <span class="badge alert">Review</span>
+            <span class="badge alert">需关注</span>
           </header>
           <nav class="segmented">
-            <button data-go="overview">Overview</button>
-            <button data-go="reports">Recent</button>
-            <button class="active" data-go="abnormal">Abnormal</button>
+            <button data-go="overview">概览</button>
+            <button data-go="reports">近期</button>
+            <button class="active" data-go="abnormal">异常</button>
           </nav>
           <article class="soft-card warning-note">
-            <strong>Note</strong>
-            <p>Values marked in red are outside the healthy range. Tap a row for explanation and advice.</p>
+            <strong>提示</strong>
+            <p>红色数值表示超出参考范围。点击项目可查看趋势解释与建议。</p>
           </article>
           <article class="soft-card">
             <div class="table-row table-head">
-              <span>Name</span><span>Result</span><span>Reference</span>
+              <span>项目</span><span>结果</span><span>参考范围</span>
             </div>
             <button class="table-row" data-go="trend">
-              <span>Red Blood Cell Count</span><strong>4.33</strong><small>4.32 - 5.72</small>
+              <span>红细胞计数</span><strong>4.33</strong><small>4.32 - 5.72</small>
             </button>
             <button class="table-row danger" data-go="trend">
-              <span>Hemoglobin</span><strong>188</strong><small>135 - 175 g/L</small>
+              <span>血红蛋白</span><strong>188</strong><small>135 - 175 g/L</small>
             </button>
             <button class="table-row danger" data-go="trend">
-              <span>Fasting Glucose</span><strong>7.4</strong><small>3.9 - 6.1 mmol/L</small>
+              <span>空腹血糖</span><strong>7.4</strong><small>3.9 - 6.1 mmol/L</small>
             </button>
             <button class="table-row danger" data-go="insight">
-              <span>White Blood Cell Count</span><strong>12.0</strong><small>4.0 - 11.0</small>
+              <span>白细胞计数</span><strong>12.0</strong><small>4.0 - 11.0</small>
             </button>
           </article>
         </section>
 
-        <section class="screen app-screen" id="trend" data-title="Trend">
+        <section class="screen app-screen" id="trend" data-title="趋势分析">
           <header class="page-header">
-            <button class="icon-btn" data-go="abnormal" aria-label="Back">
+            <button class="icon-btn" data-go="abnormal" aria-label="返回">
               <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
             </button>
-            <h1>Trend Analysis</h1>
-            <button class="icon-btn plain" aria-label="More"><svg viewBox="0 0 24 24"><path d="M12 5h.01M12 12h.01M12 19h.01"/></svg></button>
+            <h1>趋势分析</h1>
+            <button class="icon-btn plain" aria-label="更多"><svg viewBox="0 0 24 24"><path d="M12 5h.01M12 12h.01M12 19h.01"/></svg></button>
           </header>
           <article class="soft-card select-card">
             <label class="field">
-              <span>Select Test</span>
-              <span class="input-wrap select-wrap">Fasting Glucose <strong>⌄</strong></span>
+              <span>选择项目</span>
+              <span class="input-wrap select-wrap">空腹血糖 <strong>⌄</strong></span>
             </label>
           </article>
           <div class="value-grid">
-            <article class="soft-card"><p class="muted">Latest Value</p><strong>7.4</strong><span>mmol/L</span></article>
-            <article class="soft-card"><p class="muted">Normal Range</p><strong class="green-text">3.9</strong><span>mmol/L</span></article>
+            <article class="soft-card"><p class="muted">最新数值</p><strong>7.4</strong><span>mmol/L</span></article>
+            <article class="soft-card"><p class="muted">参考下限</p><strong class="green-text">3.9</strong><span>mmol/L</span></article>
           </div>
           <article class="soft-card chart-card line-card">
             <div class="section-heading">
               <div>
-                <h2>Fasting Glucose</h2>
-                <p class="green-text">Normal: 3.9 - 6.1 mmol/L</p>
+                <h2>空腹血糖</h2>
+                <p class="green-text">参考范围：3.9 - 6.1 mmol/L</p>
               </div>
-              <button class="chip-control">Month ˅</button>
+              <button class="chip-control">月度 ˅</button>
             </div>
-            <span class="trend-chip">Gradually increasing</span>
-            <svg class="line-chart-large" viewBox="0 0 310 230" aria-label="Fasting glucose monthly trend">
+            <span class="trend-chip">逐步升高</span>
+            <svg class="line-chart-large" viewBox="0 0 310 230" aria-label="空腹血糖月度趋势">
               <rect x="38" y="80" width="248" height="86" class="normal-zone"/>
               <path class="gridline" d="M38 46h248M38 106h248M38 166h248M38 206h248M38 46v160M92 46v160M146 46v160M200 46v160M254 46v160M286 46v160"/>
               <path class="line-blue" d="M38 152L65 146L92 142L119 132L146 124L173 116L200 104L227 88L254 78L286 66"/>
               <g class="chart-dots"><circle cx="38" cy="152" r="4"/><circle cx="65" cy="146" r="4"/><circle cx="92" cy="142" r="4"/><circle cx="119" cy="132" r="4"/><circle cx="146" cy="124" r="4"/><circle cx="173" cy="116" r="4"/><circle cx="200" cy="104" r="4"/><circle cx="227" cy="88" r="4"/><circle cx="254" cy="78" r="4"/><circle cx="286" cy="66" r="4"/></g>
-              <text x="38" y="224">JAN</text><text x="92" y="224">MAR</text><text x="146" y="224">MAY</text><text x="200" y="224">JUL</text><text x="254" y="224">SEP</text>
+              <text x="38" y="224">1月</text><text x="92" y="224">3月</text><text x="146" y="224">5月</text><text x="200" y="224">7月</text><text x="254" y="224">9月</text>
             </svg>
-            <div class="chart-legend"><span class="legend-blue"></span>Fasting Glucose <span class="legend-green"></span>Normal Range</div>
+            <div class="chart-legend"><span class="legend-blue"></span>空腹血糖 <span class="legend-green"></span>参考范围</div>
           </article>
           <article class="soft-card insight-card">
             <span class="info-dot">i</span>
             <div>
-              <h2>Clinical Insight</h2>
-              <p>This suggests your body is having more difficulty processing sugar than it used to.</p>
+              <h2>健康解读</h2>
+              <p>该趋势提示近期血糖控制压力增加，建议结合饮食、运动、用药和复查结果综合判断。</p>
             </div>
-            <button class="secondary-btn" data-go="insight">View Full Explanation ></button>
+            <button class="secondary-btn" data-go="insight">查看详细说明 ></button>
           </article>
         </section>
 
-        <section class="screen app-screen" id="insight" data-title="Insights">
+        <section class="screen app-screen" id="insight" data-title="健康解读">
           <header class="page-header">
-            <button class="icon-btn" data-go="trend" aria-label="Back">
+            <button class="icon-btn" data-go="trend" aria-label="返回">
               <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
             </button>
-            <h1>Insights Hub</h1>
-            <button class="icon-btn plain" aria-label="More"><svg viewBox="0 0 24 24"><path d="M12 5h.01M12 12h.01M12 19h.01"/></svg></button>
+            <h1>健康解读</h1>
+            <button class="icon-btn plain" aria-label="更多"><svg viewBox="0 0 24 24"><path d="M12 5h.01M12 12h.01M12 19h.01"/></svg></button>
           </header>
-          <article class="soft-card risk-card insight-risk">
-            <h2>Risk Interpretation</h2>
-            <p>Infection and hyperglycemic risk. A result of 7.4 indicates blood sugar is higher than recommended for your age group.</p>
-          </article>
-          <article class="accordion-card"><span>?</span><strong>What does this mean?</strong><em>⌄</em></article>
-          <article class="accordion-card"><span>♡</span><strong>Why does it matter?</strong><em>⌄</em></article>
-          <article class="accordion-card"><span>!</span><strong>What are your suggestions?</strong><em>⌄</em></article>
-          <article class="action-advice">
-            <h2>Recommended Actions</h2>
-            <p>Immediate: Drink plenty of water and avoid sugary snacks/drinks for the next 24 hours.</p>
-            <p>Clinical Follow-up: Schedule a consultation with your doctor within the next 7 days.</p>
-          </article>
-          <article class="advisor-card">
-            <h2>AI Health Advisor</h2>
-            <div class="chat-bubble">Hello Mr. Wang, Could you tell me how you are feeling today?</div>
-            <p class="declaration">AI Declaration: This clinical interpretation is generated by AI for educational purposes only. It is not a medical diagnosis. Always consult with your healthcare provider.</p>
+          <article class="advisor-card advisor-primary">
+            <h2>健康助手</h2>
+            <div class="chat-thread" id="chat-thread" aria-live="polite">
+              <div class="chat-message ai">
+                <div class="chat-bubble">您好，王先生。您可以描述最近的不适、持续时间、既往病史或用药情况，我会帮您整理成便于就医沟通的健康建议。</div>
+              </div>
+            </div>
+            <p class="declaration">本内容仅用于健康教育和就医准备，不能替代专业医生诊断或治疗建议。</p>
             <div class="quick-chips">
-              <button>I got a fever recently</button>
-              <button>Feeling thirsty and tired</button>
-              <button>I need medication advice</button>
+              <button data-prompt="我最近有点发烧">我最近有点发烧</button>
+              <button data-prompt="最近口渴，也感觉乏力">口渴和乏力</button>
+              <button data-prompt="我想了解用药注意事项">用药注意事项</button>
             </div>
           </article>
-          <div class="advisor-input"><input placeholder="Ask your AI Health Advisor..."><button>Send</button></div>
+          <div class="advisor-input">
+            <input id="advisor-input" placeholder="请输入您的健康问题...">
+            <button id="advisor-send" type="button">发送</button>
+          </div>
         </section>
 
-        <section class="screen app-screen" id="healthy" data-title="Healthy Report">
+        <section class="screen app-screen" id="healthy" data-title="正常报告">
           <header class="app-header">
-            <button class="icon-btn" data-go="reports" aria-label="Back">
+            <button class="icon-btn" data-go="reports" aria-label="返回">
               <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
             </button>
             <div class="header-title">
-              <p class="eyebrow">Alternate flow</p>
-              <h1>Healthy Report</h1>
+              <p class="eyebrow">报告状态</p>
+              <h1>正常报告</h1>
             </div>
-            <span class="badge good">Normal</span>
+            <span class="badge good">正常</span>
           </header>
           <article class="soft-card healthy-card">
             <span class="large-check">+</span>
-            <h2>No abnormal indicators</h2>
-            <p>Your current test results are within healthy ranges. Keep your regular check-up schedule.</p>
+            <h2>暂无异常指标</h2>
+            <p>当前检验结果处于参考范围内。建议继续保持规律复查和健康生活习惯。</p>
           </article>
           <article class="soft-card">
             <div class="table-row table-head">
-              <span>Name</span><span>Result</span><span>Reference</span>
+              <span>项目</span><span>结果</span><span>参考范围</span>
             </div>
             <div class="table-row">
-              <span>Hemoglobin</span><strong>144</strong><small>135 - 175 g/L</small>
+              <span>血红蛋白</span><strong>144</strong><small>135 - 175 g/L</small>
             </div>
             <div class="table-row">
-              <span>Fasting Glucose</span><strong>6.0</strong><small>3.9 - 6.1 mmol/L</small>
+              <span>空腹血糖</span><strong>6.0</strong><small>3.9 - 6.1 mmol/L</small>
             </div>
             <div class="table-row">
-              <span>White Blood Cell Count</span><strong>5.8</strong><small>4.0 - 11.0</small>
+              <span>白细胞计数</span><strong>5.8</strong><small>4.0 - 11.0</small>
             </div>
           </article>
         </section>
 
-        <nav class="bottom-nav" aria-label="Primary navigation">
+        <nav class="bottom-nav" aria-label="底部导航">
           <button data-go="overview">
             <svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg>
-            <span>Overview</span>
+            <span>首页</span>
           </button>
           <button data-go="reports">
             <svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6"/></svg>
-            <span>Reports</span>
+            <span>报告</span>
           </button>
           <button data-go="abnormal">
             <svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 4.3 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0z"/></svg>
-            <span>Alerts</span>
+            <span>异常</span>
           </button>
         </nav>
       </section>
