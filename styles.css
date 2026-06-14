@@ -1707,8 +1707,36 @@ body {
   margin-bottom: 0;
 }
 
-.chat-bubble {
+.chat-thread {
+  max-height: 360px;
+  overflow-y: auto;
+  display: grid;
+  gap: 12px;
   margin: 12px 0;
+  padding-right: 2px;
+  scrollbar-width: none;
+}
+
+.chat-thread::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-message {
+  display: grid;
+  gap: 8px;
+}
+
+.chat-message.user {
+  justify-items: end;
+}
+
+.chat-message.ai {
+  justify-items: start;
+}
+
+.chat-bubble {
+  max-width: 92%;
+  margin: 0;
   padding: 16px;
   border-radius: 16px;
   background: #ffffff;
@@ -1716,6 +1744,124 @@ body {
   color: #4b5565;
   font-size: 16px;
   line-height: 1.4;
+}
+
+.chat-message.user .chat-bubble {
+  color: #ffffff;
+  background: #315deb;
+}
+
+.chat-message.loading .chat-bubble {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #315deb;
+  background: #eef5ff;
+  font-weight: 800;
+}
+
+.typing-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #315deb;
+  box-shadow: 14px 0 0 rgba(49, 93, 235, 0.55), 28px 0 0 rgba(49, 93, 235, 0.25);
+  animation: typingPulse 1s infinite ease-in-out;
+}
+
+@keyframes typingPulse {
+  0%, 100% { opacity: 0.45; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-2px); }
+}
+
+.clinical-response {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+}
+
+.clinical-response-card {
+  padding: 15px;
+  border: 1px solid #e5ebf5;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 5px 14px rgba(15, 23, 42, 0.08);
+}
+
+.clinical-response-card h3 {
+  margin: 0 0 12px;
+  font-size: 17px;
+}
+
+.clinical-response-card.blue h3,
+.clinical-response-card.purple h3 {
+  color: #315deb;
+}
+
+.clinical-response-card.green h3 {
+  color: #229b6c;
+}
+
+.clinical-response-card.red h3,
+.clinical-response-card.danger h3 {
+  color: #dc2626;
+}
+
+.clinical-response-card.blue {
+  border-color: #d7e7ff;
+  background: #f3f8ff;
+}
+
+.clinical-response-card.purple {
+  border-color: #eadcff;
+  background: #fbf7ff;
+}
+
+.clinical-response-card.green {
+  border-color: #d6f3e4;
+  background: #f4fcf8;
+}
+
+.clinical-response-card.red,
+.clinical-response-card.danger {
+  border-color: #ffd4d4;
+  background: #fff7f7;
+}
+
+.clinical-row {
+  display: grid;
+  gap: 4px;
+  padding: 9px 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.clinical-row:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.clinical-row strong {
+  color: #374151;
+  font-size: 13px;
+}
+
+.clinical-row p,
+.clinical-response-card p {
+  margin: 0;
+  color: #4b5565;
+  line-height: 1.52;
+}
+
+.safety-note {
+  margin: 2px 0 0;
+  padding: 11px 12px;
+  border: 1px solid #dbe8ff;
+  border-radius: 14px;
+  color: #315deb;
+  background: #eef5ff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
 }
 
 .advisor-card .declaration {
@@ -1744,12 +1890,22 @@ body {
   background: #ffffff;
 }
 
+.advisor-input input:disabled {
+  color: #9aa3b2;
+  background: #f2f5f9;
+}
+
 .advisor-input button {
   border: 0;
   border-radius: 16px;
   color: #ffffff;
   background: #87bfff;
   font-weight: 900;
+}
+
+.advisor-input button:disabled {
+  opacity: 0.72;
+  cursor: wait;
 }
 
 #insight.app-screen {
@@ -1803,5 +1959,317 @@ body {
     width: 100%;
     height: 100vh;
     min-height: 100vh;
+  }
+}
+
+/* Chinese clinic app theme */
+:root {
+  --ink: #111827;
+  --muted: #8b95a5;
+  --line: #edf2f8;
+  --blue: #2f7df6;
+  --blue-dark: #1f63dc;
+  --blue-soft: #edf5ff;
+  --green: #22c58b;
+  --green-soft: #ecfbf5;
+  --red: #f05b5b;
+  --red-soft: #fff3f3;
+  --bg: #f3f8ff;
+  --card: #ffffff;
+  --shadow: 0 18px 48px rgba(37, 91, 156, 0.14);
+  --radius: 20px;
+  font-family: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 18% 10%, rgba(70, 142, 255, 0.14), transparent 32%),
+    radial-gradient(circle at 82% 20%, rgba(34, 197, 139, 0.12), transparent 26%),
+    linear-gradient(180deg, #f7fbff 0%, #edf5ff 100%);
+  letter-spacing: 0;
+}
+
+.prototype-shell {
+  padding: 32px;
+}
+
+.phone {
+  width: min(390px, calc(100vw - 32px));
+  height: min(844px, calc(100vh - 64px));
+  min-height: min(740px, calc(100vh - 64px));
+  overflow: hidden;
+  border: 1px solid rgba(213, 226, 242, 0.92);
+  border-radius: 34px;
+  background: #f7fbff;
+  box-shadow: 0 28px 80px rgba(67, 114, 172, 0.18);
+}
+
+.status-bar {
+  height: 44px;
+  padding: 0 24px;
+  border-bottom: 0;
+  background: rgba(255, 255, 255, 0.92);
+  font-size: 13px;
+}
+
+.screen {
+  inset: 44px 0 0;
+  padding: 0 22px 100px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82) 0%, rgba(247, 251, 255, 0.98) 160px),
+    #f7fbff;
+}
+
+.auth-screen {
+  padding: 0 24px 30px;
+  background: #ffffff;
+}
+
+h1 {
+  font-size: 25px;
+  font-weight: 850;
+  letter-spacing: 0;
+}
+
+h2 {
+  font-size: 18px;
+  font-weight: 850;
+}
+
+p,
+small,
+button,
+input {
+  letter-spacing: 0;
+}
+
+.brand-hero {
+  min-height: 270px;
+  background:
+    radial-gradient(circle at 76% 20%, rgba(255, 255, 255, 0.22), transparent 18%),
+    linear-gradient(145deg, #2773f4 0%, #3d8cff 100%);
+}
+
+.brand-mark {
+  width: 70px;
+  height: 70px;
+  color: #2f7df6;
+  box-shadow: 0 0 0 16px rgba(255, 255, 255, 0.16);
+}
+
+.brand-hero h1 {
+  font-size: 28px;
+  font-weight: 900;
+}
+
+.brand-hero p,
+.brand-icons {
+  font-weight: 650;
+}
+
+.trust-banner,
+.auth-screen .input-wrap,
+.soft-card,
+.quick-action-card,
+.lab-stats article,
+.alert-table-card,
+.clinical-response-card,
+.chat-bubble {
+  border-color: rgba(226, 235, 246, 0.96);
+  border-radius: 18px;
+  box-shadow: 0 10px 28px rgba(30, 72, 120, 0.07);
+}
+
+.auth-screen .input-wrap,
+.advisor-input input {
+  background: #fbfdff;
+}
+
+.primary-btn,
+.auth-screen .primary-btn,
+.patient-gradient-card,
+.quick-action-card.active {
+  background: linear-gradient(135deg, #2f7df6 0%, #4d96ff 100%);
+  box-shadow: 0 14px 30px rgba(47, 125, 246, 0.24);
+}
+
+.home-header {
+  margin-top: 6px;
+}
+
+.home-header h1 {
+  font-size: 24px;
+}
+
+.eyebrow,
+.eyebrow.neutral {
+  color: #7d8797;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.bell-btn {
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(30, 72, 120, 0.07);
+}
+
+.patient-gradient-card {
+  border-radius: 18px;
+}
+
+.patient-icon,
+.qa-icon {
+  border-radius: 16px;
+}
+
+.calendar-title button,
+.chip-control,
+.trend-chip,
+.quick-chips button,
+.badge {
+  border-radius: 999px;
+}
+
+.page-header {
+  min-height: 60px;
+  margin: -20px -22px 18px;
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid rgba(237, 242, 248, 0.95);
+  box-shadow: 0 4px 18px rgba(30, 72, 120, 0.04);
+  backdrop-filter: blur(16px);
+}
+
+.page-header h1,
+.app-header h1 {
+  font-size: 20px;
+  font-weight: 850;
+}
+
+.icon-btn,
+.page-header .icon-btn {
+  border-radius: 16px;
+}
+
+.segmented {
+  padding: 0;
+  gap: 18px;
+  background: transparent;
+}
+
+.segmented button {
+  min-height: 34px;
+  border-radius: 0;
+  color: #8b95a5;
+  background: transparent;
+  box-shadow: none;
+}
+
+.segmented .active {
+  position: relative;
+  color: var(--blue);
+  background: transparent;
+  box-shadow: none;
+}
+
+.segmented .active::after {
+  content: "";
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: 0;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--blue);
+}
+
+.alert-table-row,
+.report-row,
+.table-row {
+  border-radius: 14px;
+}
+
+.note-banner {
+  border-color: #ffdede;
+  color: #e24444;
+  background: #fff5f5;
+}
+
+.advisor-card {
+  padding: 16px;
+  border: 1px solid rgba(226, 235, 246, 0.96);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 28px rgba(30, 72, 120, 0.07);
+}
+
+.chat-thread {
+  max-height: 390px;
+  gap: 12px;
+}
+
+.chat-bubble {
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.chat-message.user .chat-bubble {
+  background: linear-gradient(135deg, #2f7df6 0%, #4d96ff 100%);
+}
+
+.clinical-response-card {
+  padding: 14px;
+}
+
+.clinical-response-card h3 {
+  font-size: 16px;
+}
+
+.safety-note {
+  color: #4d6b93;
+  border-color: #e2edf9;
+  background: #f3f8ff;
+  font-weight: 700;
+}
+
+.advisor-input {
+  grid-template-columns: 1fr 68px;
+  background: linear-gradient(180deg, rgba(247, 251, 255, 0), #f7fbff 34%);
+}
+
+.advisor-input input,
+.advisor-input button {
+  min-height: 48px;
+  border-radius: 18px;
+}
+
+.advisor-input button {
+  background: linear-gradient(135deg, #2f7df6 0%, #4d96ff 100%);
+  box-shadow: 0 10px 20px rgba(47, 125, 246, 0.22);
+}
+
+.bottom-nav {
+  padding: 6px 30px 8px;
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(16px);
+}
+
+.bottom-nav button {
+  font-size: 12px;
+  font-weight: 750;
+}
+
+@media (max-width: 480px) {
+  .prototype-shell {
+    padding: 0;
+  }
+
+  .phone {
+    width: 100%;
+    height: 100vh;
+    min-height: 100vh;
+    border: 0;
+    border-radius: 0;
   }
 }
