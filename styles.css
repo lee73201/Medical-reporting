@@ -832,6 +832,38 @@ body {
   color: var(--teal-dark);
   background: rgba(12, 174, 155, .14);
 }
+.ai-source-chip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 22px;
+  margin-top: 8px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+}
+.ai-source-chip.ai {
+  color: var(--teal-dark);
+  background: rgba(12, 174, 155, .14);
+}
+.ai-source-chip.mock {
+  color: #60758b;
+  background: #eef4f8;
+}
+.ai-generate-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+}
+.ai-inline-message {
+  margin-top: 10px;
+}
+.ai-service-panel {
+  background: #fbfdff;
+}
 .mode-actions {
   grid-template-columns: 1fr;
 }

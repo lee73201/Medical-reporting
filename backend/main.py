@@ -5,6 +5,7 @@ from typing import List
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
+from .ai_routes import router as ai_router
 from .database import get_connection, init_db
 from .models import fetch_report, list_reports, upsert_report
 from .schemas import Report
@@ -22,6 +23,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(ai_router)
 
 
 @app.on_event("startup")

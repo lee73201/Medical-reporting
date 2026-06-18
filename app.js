@@ -13,7 +13,8 @@ const appState = {
   reportsLoaded: false,
   loading: false,
   error: null,
-  apiHealth: 'unchecked'
+  apiHealth: 'unchecked',
+  aiHealth: null
 };
 const patient = { name: '王先生', age: 70, patientId: '123XXXX' };
 let selectedReportId = getStoredSelectedReportId();
@@ -21,6 +22,7 @@ let selectedTrendItem = '空腹血糖';
 let aiMode = 'insights';
 let selectedAiReportId = '';
 let expandedAiReportId = '';
+const aiInterpretationState = {};
 
 
 const labReferenceDictionary = [
@@ -378,7 +380,8 @@ function normalizeChatMessage(message) {
   return {
     role: message.role === 'assistant' || message.role === 'ai' ? 'assistant' : 'user',
     content: message.content ?? message.text ?? '',
-    time: message.time || formatDateTime(new Date())
+    time: message.time || formatDateTime(new Date()),
+    source: message.source === 'ai' ? 'ai' : message.source === 'mock' ? 'mock' : ''
   };
 }
 const chatService = {
@@ -390,8 +393,8 @@ const chatService = {
     localStorage.setItem(CHAT_KEY, JSON.stringify(normalized));
     return normalized;
   },
-  addMessage(role, content) {
-    return this.saveMessages([...this.listMessages(), { role, content, time: formatDateTime(new Date()) }]);
+  addMessage(role, content, source = '') {
+    return this.saveMessages([...this.listMessages(), { role, content, source, time: formatDateTime(new Date()) }]);
   },
   clearMessages() {
     localStorage.setItem(CHAT_KEY, JSON.stringify([]));
@@ -401,9 +404,49 @@ const chatService = {
 function getChatHistory() { return chatService.listMessages(); }
 function saveChatHistory(messages) { return chatService.saveMessages(messages); }
 function clearChatHistory() { return chatService.clearMessages(); }
-function addChatMessage(role, content) { return chatService.addMessage(role, content); }
+function addChatMessage(role, content, source = '') { return chatService.addMessage(role, content, source); }
+async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 15000) {
+  if (typeof AbortController === 'undefined') {
+    try {
+      const response = await fetch(url, options);
+      return response.ok ? await response.json() : null;
+    } catch {
+      return null;
+    }
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function callAiInterpretApi(report) {
+  const normalizedReport = normalizeReport(report);
+  const data = await fetchJsonWithTimeout(`${appConfig.apiBaseUrl}/api/ai/interpret`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ report: normalizedReport })
+  });
+  return data?.ok && data.result ? data.result : null;
+}
 async function callAiChatApi(question, report, chatHistory) {
-  return null;
+  if (!report) return null;
+  const data = await fetchJsonWithTimeout(`${appConfig.apiBaseUrl}/api/ai/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      report: normalizeReport(report),
+      question,
+      messages: (chatHistory || []).map(message => ({ role: message.role, content: message.content }))
+    })
+  });
+  return data?.ok && data.reply ? data.reply : null;
 }
 function findMatchedLabItem(question, report) {
   const q = String(question || '').trim().toLowerCase();
@@ -1171,6 +1214,9 @@ function renderAi() {
       renderAi();
     };
   });
+  root.querySelectorAll('[data-ai-refresh]').forEach(button => {
+    button.onclick = () => requestAiInterpretation(button.dataset.aiRefresh);
+  });
   const form = document.querySelector('#chat-form');
   root.querySelectorAll('[data-quick-question]').forEach(button => {
     button.onclick = () => sendChatQuestion(button.dataset.quickQuestion);
@@ -1179,6 +1225,17 @@ function renderAi() {
   if (clearButton) clearButton.onclick = () => { clearChatHistory(); renderAi(); };
   if (form) form.onsubmit = e => { e.preventDefault(); sendChatQuestion(form.question.value); };
 }
+async function requestAiInterpretation(reportId) {
+  const report = getReports().find(item => item.id === reportId);
+  if (!report) return;
+  aiInterpretationState[reportId] = { loading: true, error: '', source: 'mock', result: generateAiInterpretation(report) };
+  renderAi();
+  const result = await callAiInterpretApi(report);
+  aiInterpretationState[reportId] = result
+    ? { loading: false, error: '', source: 'ai', result }
+    : { loading: false, error: 'AI 服务暂不可用，已显示本地规则解读。', source: 'mock', result: generateAiInterpretation(report) };
+  renderAi();
+}
 async function sendChatQuestion(rawQuestion) {
   const question = String(rawQuestion || '').trim();
   if (!question) return;
@@ -1186,7 +1243,8 @@ async function sendChatQuestion(rawQuestion) {
   addChatMessage('user', question);
   const history = getChatHistory();
   const apiReply = await callAiChatApi(question, report, history);
-  addChatMessage('assistant', apiReply || generateMockChatReply(question, report));
+  if (apiReply) addChatMessage('assistant', apiReply, 'ai');
+  else addChatMessage('assistant', generateMockChatReply(question, report), 'mock');
   renderAi();
 }
 function renderChatPanel(report, messages) {
@@ -1204,7 +1262,7 @@ function renderQuickQuestions() {
 }
 function renderChatMessages(messages) {
   if (!messages.length) return '<div class="chat-thread"><div class="chat-empty-state">还没有对话。你可以直接提问，或点击上方快捷问题。</div></div>';
-  return `<div class="chat-thread">${messages.map(message => `<div class="message ${message.role === 'user' ? 'user' : 'assistant'}">${message.role === 'assistant' ? '<div class="robot" style="width:28px;height:28px;font-size:16px">🤖</div>' : ''}<div><div class="bubble">${esc(message.content)}</div><div class="msg-time">${esc(message.time)}</div></div></div>`).join('')}</div>`;
+  return `<div class="chat-thread">${messages.map(message => `<div class="message ${message.role === 'user' ? 'user' : 'assistant'}">${message.role === 'assistant' ? '<div class="robot" style="width:28px;height:28px;font-size:16px">🤖</div>' : ''}<div><div class="bubble">${esc(message.content)}${message.role === 'assistant' && message.source ? `<span class="ai-source-chip ${message.source}">${message.source === 'ai' ? 'AI' : '本地规则'}</span>` : ''}</div><div class="msg-time">${esc(message.time)}</div></div></div>`).join('')}</div>`;
 }
 function renderAiInsightCards(reports) {
   if (!reports.length) return '<article class="card ai-empty-state">暂无报告数据，请先上传或录入一份检验报告。</article>';
@@ -1224,18 +1282,21 @@ function renderAiReportCard(report, options = {}) {
   const bad = getAbnormalItems(normalizedReport);
   const normal = normalizedReport.items.length - bad.length;
   const abnormalNames = bad.slice(0, 3).map(item => item.name);
+  const aiState = aiInterpretationState[normalizedReport.id] || { loading: false, error: '', source: 'mock', result: generateAiInterpretation(normalizedReport) };
   return `<article class="card ai-report-card ${expanded ? 'expanded' : 'collapsed'} ${highlighted ? 'highlighted' : ''}">
     <div class="ai-card-header"><div><h3>${esc(normalizedReport.reportType)}</h3><p>${esc(normalizedReport.hospital)} · ${esc(normalizedReport.patient.name)}</p><div class="ai-card-tags">${isLatest ? '<span>最新报告</span>' : ''}${isSelected ? '<span>当前查看</span>' : ''}</div></div><div><span class="report-date">${esc(normalizedReport.date)}</span><small class="status-badge ${bad.length ? 'high' : 'normal'}">异常 ${bad.length} 项</small></div></div>
     <div class="ai-summary-grid"><div><strong>${normalizedReport.items.length}</strong><span>总项目</span></div><div><strong>${normal}</strong><span>正常</span></div><div><strong class="${bad.length ? 'red' : 'green'}">${bad.length}</strong><span>异常</span></div></div>
-    ${expanded ? renderAiInterpretation(generateAiInterpretation(normalizedReport)) : `<div class="ai-report-summary"><div><strong>主要异常</strong><p>${abnormalNames.length ? abnormalNames.map(esc).join('、') : '未发现明显异常指标'}</p></div>${canToggle ? `<button class="outline-btn ai-expand-button" type="button" data-ai-toggle="${esc(normalizedReport.id)}">查看完整解读</button>` : ''}</div>`}
+    ${expanded ? `<div class="ai-generate-row"><span class="ai-source-chip ${aiState.source}">${aiState.source === 'ai' ? 'AI 生成' : '本地规则生成'}</span><button class="outline-btn ai-expand-button" type="button" data-ai-refresh="${esc(normalizedReport.id)}" ${aiState.loading ? 'disabled' : ''}>${aiState.loading ? '正在生成 AI 解读…' : '使用 AI 重新解读'}</button></div>${aiState.error ? `<div class="form-message error ai-inline-message">${esc(aiState.error)}</div>` : ''}${renderAiInterpretation(aiState.result)}` : `<div class="ai-report-summary"><div><strong>主要异常</strong><p>${abnormalNames.length ? abnormalNames.map(esc).join('、') : '未发现明显异常指标'}</p></div>${canToggle ? `<button class="outline-btn ai-expand-button" type="button" data-ai-toggle="${esc(normalizedReport.id)}">查看完整解读</button>` : ''}</div>`}
     ${expanded && canToggle ? `<button class="outline-btn ai-expand-button collapse" type="button" data-ai-toggle="${esc(normalizedReport.id)}">收起解读</button>` : ''}
   </article>`;
 }
 function renderAiInterpretation(interpretation) {
-  return `<section class="ai-summary-box"><h4>整体评估</h4><p>${esc(interpretation.summary)}</p></section>
-    <section class="ai-abnormal-list"><h4>异常指标分析</h4>${interpretation.abnormalItems.length ? interpretation.abnormalItems.map(item => `<article class="ai-abnormal-item"><div class="ai-abnormal-head"><strong>${esc(item.name)}</strong><span class="status-badge ${item.statusText === '偏高' ? 'high' : item.statusText === '偏低' ? 'low' : 'normal'}">${esc(item.statusText)}</span></div><div class="ai-abnormal-meta"><span>${esc(item.valueText)}</span><span>参考 ${esc(item.referenceText)}</span><span>${esc(item.category)}</span></div><p>${esc(item.explanation)}</p><small>${esc(item.suggestion)}</small></article>`).join('') : `<div class="ai-empty-state">${esc(interpretation.normalNote)}</div>`}</section>
-    <section class="ai-recommendation-list"><h4>综合建议</h4><ul>${interpretation.recommendations.map(item => `<li>${esc(item)}</li>`).join('')}</ul></section>
-    <section class="ai-disclaimer">${esc(interpretation.disclaimer)}</section>`;
+  const abnormalItems = Array.isArray(interpretation?.abnormalItems) ? interpretation.abnormalItems : [];
+  const recommendations = Array.isArray(interpretation?.recommendations) ? interpretation.recommendations : [];
+  return `<section class="ai-summary-box"><h4>整体评估</h4><p>${esc(interpretation?.summary || '暂无摘要。')}</p></section>
+    <section class="ai-abnormal-list"><h4>异常指标分析</h4>${abnormalItems.length ? abnormalItems.map(item => `<article class="ai-abnormal-item"><div class="ai-abnormal-head"><strong>${esc(item.name)}</strong><span class="status-badge ${item.statusText === '偏高' ? 'high' : item.statusText === '偏低' ? 'low' : 'normal'}">${esc(item.statusText || '正常')}</span></div><div class="ai-abnormal-meta"><span>${esc(item.valueText)}</span><span>参考 ${esc(item.referenceText)}</span><span>${esc(item.category)}</span></div><p>${esc(item.explanation)}</p><small>${esc(item.suggestion)}</small></article>`).join('') : `<div class="ai-empty-state">${esc(interpretation?.normalNote || '未发现明显异常指标。')}</div>`}</section>
+    <section class="ai-recommendation-list"><h4>综合建议</h4><ul>${recommendations.map(item => `<li>${esc(item)}</li>`).join('') || '<li>建议结合既往病史、症状和医生意见综合判断。</li>'}</ul></section>
+    <section class="ai-disclaimer">${esc(interpretation?.disclaimer || '内容仅供健康科普和报告理解参考，不能替代医生诊断。')}</section>`;
 }
 function renderProfile() {
   const root = document.querySelector('#profile');
@@ -1256,6 +1317,15 @@ function renderDevTools() {
         <button class="outline-btn" type="button" id="check-api-health">检测后端连接</button>
         <button class="outline-btn" type="button" id="switch-api-mode">切换到 API 模式</button>
         <button class="outline-btn" type="button" id="switch-local-mode">切换到本地模式</button>
+      </div>
+    </section>
+    <section class="data-mode-panel ai-service-panel">
+      <div class="data-mode-row"><span>AI Base URL</span><strong>${appState.aiHealth ? (appState.aiHealth.baseUrlConfigured ? '已配置' : '未配置') : '未检测'}</strong></div>
+      <div class="data-mode-row"><span>AI Model</span><strong>${esc(appState.aiHealth?.model || '未检测')}</strong></div>
+      <div class="data-mode-row"><span>AI Key</span><strong>${appState.aiHealth ? (appState.aiHealth.hasKey ? 'true' : 'false') : '未检测'}</strong></div>
+      <div class="data-mode-row"><span>AI 接口状态</span><strong>${appState.aiHealth ? (appState.aiHealth.ok ? '可用' : '不可用') : '未检测'}</strong></div>
+      <div class="dev-actions mode-actions">
+        <button class="outline-btn" type="button" id="check-ai-health">检测 AI 服务</button>
       </div>
     </section>
     <div class="dev-stats">
@@ -1307,6 +1377,7 @@ function bindProfileEvents(root) {
   root.querySelector('#sync-local-to-api')?.addEventListener('click', syncLocalReportsToApi);
   root.querySelector('#pull-api-to-local')?.addEventListener('click', pullApiReportsToLocal);
   root.querySelector('#check-api-health')?.addEventListener('click', checkApiHealth);
+  root.querySelector('#check-ai-health')?.addEventListener('click', checkAiHealth);
   root.querySelector('#switch-api-mode')?.addEventListener('click', switchToApiMode);
   root.querySelector('#switch-local-mode')?.addEventListener('click', switchToLocalMode);
 }
@@ -1328,6 +1399,12 @@ async function checkApiHealth() {
     renderProfile();
     showProfileMessage(`后端连接失败：${error.message}`, 'error');
   }
+}
+async function checkAiHealth() {
+  const result = await fetchJsonWithTimeout(`${appConfig.apiBaseUrl}/api/ai/health`, {}, 8000);
+  appState.aiHealth = result || { ok: false, configured: false, message: 'AI 后端接口不可访问' };
+  renderProfile();
+  showProfileMessage(appState.aiHealth.ok ? 'AI 服务可用' : (appState.aiHealth.message || 'AI 服务暂不可用'), appState.aiHealth.ok ? 'success' : 'error');
 }
 async function switchToApiMode() {
   setDataMode('api');
@@ -1514,4 +1591,5 @@ function formatRange(i) { return `${i.refLow}-${i.refHigh} ${i.unit || ''}`.trim
 function esc(v) { return String(v ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); }
 function readJson(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } }
 window.appConfig=appConfig; window.appState=appState; window.reportService=reportService; window.chatService=chatService; window.setDataMode=setDataMode; window.loadReportsToState=loadReportsToState; window.refreshReportsAndRender=refreshReportsAndRender; window.checkApiHealth=checkApiHealth; window.switchToApiMode=switchToApiMode; window.switchToLocalMode=switchToLocalMode; window.apiHealthText=apiHealthText; window.labReferenceDictionary=labReferenceDictionary; window.medicalItemDictionary=medicalItemDictionary; window.normalizeReport=normalizeReport; window.normalizeReports=normalizeReports; window.normalizeLabItemName=normalizeLabItemName; window.getDefaultReferenceRange=getDefaultReferenceRange; window.getMedicalItemInfo=getMedicalItemInfo; window.explainLabItem=explainLabItem; window.getReports=getReports; window.saveReports=saveReports; window.addReport=addReport; window.calculateItemStatus=calculateItemStatus; window.getLatestReport=getLatestReport; window.getAbnormalItems=getAbnormalItems; window.getOverviewStats=getOverviewStats; window.getTrendData=getTrendData; window.trendStatus=trendStatus; window.statusText=statusText; window.formatValue=formatValue; window.formatRange=formatRange; window.generateAiInterpretation=generateAiInterpretation; window.aiInterpretationToText=aiInterpretationToText; window.generateAiInterpretationText=generateAiInterpretationText; window.generateMockChatReply=generateMockChatReply; window.getCurrentChatReport=getCurrentChatReport; window.getChatHistory=getChatHistory; window.saveChatHistory=saveChatHistory; window.clearChatHistory=clearChatHistory; window.addChatMessage=addChatMessage; window.callAiChatApi=callAiChatApi; window.findMatchedLabItem=findMatchedLabItem; window.buildReportSummaryReply=buildReportSummaryReply; window.buildItemExplanationReply=buildItemExplanationReply; window.isMedicalAdviceQuestion=isMedicalAdviceQuestion; window.renderChatPanel=renderChatPanel; window.renderChatContextCard=renderChatContextCard; window.renderChatMessages=renderChatMessages; window.renderQuickQuestions=renderQuickQuestions; window.loadPdfJsIfNeeded=loadPdfJsIfNeeded; window.extractTextFromPdfFile=extractTextFromPdfFile; window.groupTextItemsIntoLines=groupTextItemsIntoLines; window.normalizePdfText=normalizePdfText; window.parsePdfReportText=parsePdfReportText; window.parseReportMetaFromText=parseReportMetaFromText; window.parseLabItemsFromText=parseLabItemsFromText; window.parseLabLine=parseLabLine; window.parsePdfReferenceRange=parsePdfReferenceRange; window.normalizeParsedUnit=normalizeParsedUnit; window.buildReportFromParsedPdf=buildReportFromParsedPdf; window.calculatePdfParseConfidence=calculatePdfParseConfidence; window.pdfParserTestCases=pdfParserTestCases; window.runPdfParserTests=runPdfParserTests; window.renderPdfStatus=renderPdfStatus; window.renderPdfError=renderPdfError; window.renderPdfPreview=renderPdfPreview; window.renderParseDebugDetails=renderParseDebugDetails; window.collectParsedPdfPreview=collectParsedPdfPreview; window.handlePastedTextParse=handlePastedTextParse; window.renderOverview=renderOverview; window.renderReports=renderReports; window.renderTrends=renderTrends; window.renderAi=renderAi; window.renderProfile=renderProfile; window.renderUpload=renderUpload; window.bindUploadEvents=bindUploadEvents; window.createEmptyLabItemForm=createEmptyLabItemForm; window.collectUploadFormData=collectUploadFormData; window.validateUploadForm=validateUploadForm; window.saveUploadedReport=saveUploadedReport; window.renderReportDetail=renderReportDetail; window.renderLabItemCard=renderLabItemCard; window.bindReportDetailEvents=bindReportDetailEvents; window.renderExplanationPanel=renderExplanationPanel; window.renderAiInsightCards=renderAiInsightCards; window.renderAiReportCard=renderAiReportCard; window.renderAiInterpretation=renderAiInterpretation; window.renderDevTools=renderDevTools; window.getReportsCount=getReportsCount; window.getChatCount=getChatCount; window.resetReportsToSample=resetReportsToSample; window.clearReportsData=clearReportsData; window.exportReportsJson=exportReportsJson; window.importReportsJson=importReportsJson; window.syncLocalReportsToApi=syncLocalReportsToApi; window.pullApiReportsToLocal=pullApiReportsToLocal; window.refreshAfterDataChange=refreshAfterDataChange;
+window.aiInterpretationState=aiInterpretationState; window.fetchJsonWithTimeout=fetchJsonWithTimeout; window.callAiInterpretApi=callAiInterpretApi; window.requestAiInterpretation=requestAiInterpretation; window.checkAiHealth=checkAiHealth;
 showScreen('overview');
