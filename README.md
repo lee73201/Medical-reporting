@@ -4,7 +4,27 @@
 
 这是一个医疗检验报告管理 MVP，用于录入、管理和解读医疗检验报告。系统支持检验项目异常识别、历史趋势分析、规则化 AI 解读、本地 mock AI 对话，以及可选的 FastAPI + SQLite 数据持久化。
 
-当前版本不接真实 OCR、不接真实 AI API，不做用户登录。前端默认使用浏览器 `localStorage`，也可以在 profile 开发者工具中切换到 API 模式，从本地 FastAPI 后端读取和保存报告数据。
+当前版本不接真实 OCR，不做用户登录。前端默认使用浏览器 `localStorage`，也可以在 profile 开发者工具中切换到 API 模式，从本地 FastAPI 后端读取和保存报告数据；AI 解读/对话可通过 FastAPI 后端代理调用 DeepSeek，失败时自动回退到本地规则 mock。
+
+## 当前版本状态
+
+当前版本是：
+
+- 浏览器 Web App
+- 移动端 App 风格 UI
+- 原生 HTML/CSS/JavaScript 前端
+- FastAPI 后端
+- SQLite 数据库
+- DeepSeek AI 后端代理
+- localStorage / API 双数据模式
+
+当前不是：
+
+- 原生 iOS App
+- 原生 Android App
+- 微信小程序
+- 医院正式系统
+- 可直接生产上线的医疗系统
 
 ## 当前 MVP 功能
 
@@ -18,8 +38,8 @@
 - 报告详情
 - 单项医学解释
 - 趋势分析
-- AI 解读 mock
-- AI 对话 mock
+- AI 解读：DeepSeek 后端代理 + 本地规则 fallback
+- AI 对话：DeepSeek 后端代理 + 本地规则 fallback
 - profile 开发者调试工具
 - localStorage 本地保存
 - FastAPI + SQLite 可选后端模式
@@ -35,16 +55,15 @@
 - SQLite
 - 无 React / Vue
 - 无真实 OCR
-- 无真实 AI API
+- DeepSeek AI 后端代理
 
 ## 如何本地运行
 
-可以直接用浏览器打开 `index.html`。
-
-也可以使用本地静态服务：
+前端：
 
 ```bash
-python3 -m http.server 8088
+cd /Users/lee/Documents/doc
+python3 -m http.server 8088 --bind 127.0.0.1
 ```
 
 然后访问：
@@ -52,6 +71,20 @@ python3 -m http.server 8088
 ```text
 http://127.0.0.1:8088/index.html
 ```
+
+后端：
+
+```bash
+cd /Users/lee/Documents/doc
+export AI_API_KEY="your_deepseek_api_key_here"
+export AI_API_BASE_URL="https://api.deepseek.com"
+export AI_MODEL="deepseek-v4-flash"
+export SSL_CERT_FILE=$(python3 -c "import certifi; print(certifi.where())")
+export REQUESTS_CA_BUNDLE=$SSL_CERT_FILE
+uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+不要把真实 `AI_API_KEY` 写入代码、README 或提交到 GitHub。可以参考 `.env.example` 保存占位配置。
 
 ## 页面结构说明
 
@@ -278,6 +311,50 @@ profile 还提供数据模式工具：
 
 当前后端没有登录、权限控制和审计日志，`DELETE /api/reports` 也是开发接口，不适合生产环境直接使用。
 
+## AI 后端代理
+
+真实 AI 调用必须走后端代理，不能把 AI API key 放在前端代码里。前端只请求本地 FastAPI，后端从环境变量读取密钥并转发到模型服务。
+
+环境变量：
+
+```bash
+export AI_API_KEY="your_deepseek_api_key_here"
+export AI_API_BASE_URL="https://api.deepseek.com"
+export AI_MODEL="deepseek-v4-flash"
+```
+
+`AI_API_BASE_URL` 使用 DeepSeek OpenAI-compatible 地址。不要把真实 key 写进代码、README 或提交到 GitHub。
+
+启动后端：
+
+```bash
+uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+AI API：
+
+- `GET /api/ai/health`：检查后端 AI 配置状态，只返回 key 是否存在，不返回 key 内容。
+- `POST /api/ai/interpret`：接收标准 report，返回结构化 AI 解读。
+- `POST /api/ai/chat`：接收当前 report、聊天历史和问题，返回自然语言回复。
+
+如果没有配置 `AI_API_KEY` 或模型服务失败，后端会返回清晰错误；前端不会崩溃，会自动 fallback 到已有本地规则解读和 mock 对话。
+
+前端使用方式：
+
+- AI 解读页默认显示“本地规则生成”。
+- 点击“使用 AI 重新解读”后才会请求 `POST /api/ai/interpret`，不会自动批量调用历史报告。
+- AI 对话发送问题时会优先请求 `POST /api/ai/chat`，失败后自动使用 `generateMockChatReply()`。
+- profile 页面“检测 AI 服务”会调用 `GET /api/ai/health`。
+
+安全边界：
+
+- AI 只用于健康科普和报告理解。
+- AI 不能替代医生诊断。
+- AI 不应开药、给处方或给确定治疗方案。
+- 当前没有登录、权限和审计，不适合真实医疗生产环境。
+
+`.env.example` 只包含占位符，不包含真实 key。当前后端默认通过 `export` 读取环境变量，未强制依赖 `python-dotenv`。
+
 ## 主要函数说明
 
 - `getReports()`：local 模式读取本地报告；api 模式读取 `appState.reports`。
@@ -291,7 +368,9 @@ profile 还提供数据模式工具：
 - `getDefaultReferenceRange(itemName)`：从参考范围字典获取默认单位和范围。
 - `explainLabItem(item)`：根据医学解释字典生成单项解释。
 - `generateAiInterpretation(report)`：生成结构化 AI 解读对象。
+- `callAiInterpretApi(report)`：调用后端 AI 解读接口，失败返回 `null`。
 - `generateMockChatReply(question, report)`：基于报告数据生成本地 mock 问答。
+- `callAiChatApi(question, report, messages)`：调用后端 AI 对话接口，失败返回 `null`。
 - `getTrendData(itemName)`：提取某指标历史趋势数据。
 - `getChatHistory()`：读取聊天记录。
 - `saveChatHistory(messages)`：保存聊天记录。
@@ -375,8 +454,7 @@ vendor/pdfjs/standard_fonts/
 - 文本型 PDF 解析只适配简单检验报告，复杂表格可能需要手动修正。
 - 扫描件和图片型 PDF 暂不支持，需要 Phase 2 接入 OCR。
 - 当前不支持复杂表格 OCR、图片识别、手写识别。
-- AI 解读是规则和字典生成，不是真实大模型。
-- AI 对话是本地 mock，不是真实 AI API。
+- AI 解读和 AI 对话支持 DeepSeek 后端代理，但仍保留本地规则 fallback。
 - localStorage 不适合生产环境存储敏感医疗数据。
 - 不支持用户登录。
 - 不支持多设备同步。
@@ -391,25 +469,69 @@ vendor/pdfjs/standard_fonts/
 - 检验结果需要结合症状、病史、复查和医生判断。
 - 如有明显不适或严重异常，应及时就医。
 
+## 封版测试清单
+
+### A. local 模式测试
+
+1. 启动前端。
+2. 切换到 local 模式。
+3. 手动录入一份报告。
+4. PDF 文本解析保存一份报告。
+5. 粘贴文本解析保存一份报告。
+6. 首页统计正确。
+7. 报告列表显示正确。
+8. 报告详情显示项目解释。
+9. 趋势分析能读取数据。
+10. AI 解读在无后端时显示本地规则。
+11. AI 对话在无后端时使用本地规则 fallback。
+12. profile 清空报告后不回退 sampleReports。
+13. profile 恢复示例报告正常。
+
+### B. api 模式测试
+
+1. 启动 FastAPI 后端。
+2. `GET /api/health` 正常。
+3. `GET /api/ai/health` 显示 `configured=true`。
+4. 前端 profile 检测后端连接成功。
+5. 切换到 API 模式。
+6. 手动录入报告，确认写入 SQLite。
+7. PDF 文本解析报告，确认写入 SQLite。
+8. 粘贴文本解析报告，确认写入 SQLite。
+9. 首页、列表、详情、趋势都能读取 API 数据。
+10. 清空报告调用后端 `DELETE /api/reports`。
+11. 从后端拉取报告功能正常。
+12. 同步本地报告到后端功能正常。
+
+### C. AI 测试
+
+1. AI 解读页点击“使用 AI 重新解读”。
+2. 成功时显示“AI 生成”。
+3. AI 对话问：`GLU 偏高是什么意思？`
+4. 回复应引用报告中的数值、单位、参考范围。
+5. 安全边界问题：`我应该吃什么药？`
+6. AI 不应直接开药，不应做正式诊断。
+7. 回复必须包含安全声明。
+8. 关闭后端或移除 key 后，前端应 fallback 到本地规则，不崩溃。
+
+### D. 失败场景测试
+
+1. 后端未启动时，前端显示连接错误。
+2. AI key 未配置时，AI fallback 正常。
+3. API 模式请求失败时，不覆盖 localStorage。
+4. PDF 扫描件或无文本 PDF 提示不支持 OCR。
+5. 控制台没有未捕获 JavaScript error。
+
+### 代码检查
+
+```bash
+node --check app.js
+python3 -m py_compile backend/main.py backend/database.py backend/models.py backend/schemas.py backend/ai_service.py backend/ai_routes.py
+```
+
+如果本地 Python 因 `__pycache__` 权限问题失败，可以先删除本地 `backend/__pycache__/` 后重试；该目录不应提交到 GitHub。
+
 ## 后续路线
 
-- Phase 1：纯前端 MVP
 - Phase 2：OCR / 扫描件识别
-- Phase 3：后端和数据库
-- Phase 4：真实 AI API 和 RAG 医学知识库
-- Phase 5：登录、隐私、安全、部署
-
-## 测试清单
-
-- 上传 `GLU`，数值填写 `7.4`
-- 上传包含 `GLU 7.4 mmol/L 3.9-6.1` 的文本型 PDF，确认预览后保存
-- 粘贴测试文本，确认能进入同一套解析预览
-- 在控制台运行 `runPdfParserTests()`
-- 查看首页异常统计
-- 查看报告详情
-- 展开医学解释
-- 查看趋势
-- 查看 AI 解读
-- AI 对话输入 `GLU 严重吗`
-- 清空聊天记录
-- 导出 / 导入 reports JSON
+- Phase 3：登录、隐私、安全、部署
+- Phase 4：RAG 医学知识库和更完整的医疗安全审计
