@@ -19,6 +19,9 @@ const appState = {
 const patient = { name: '王先生', age: 70, patientId: '123XXXX' };
 let selectedReportId = getStoredSelectedReportId();
 let selectedTrendItem = '空腹血糖';
+let selectedTrendPointKey = '';
+let trendDetailTab = 'explain';
+let overviewItemFilter = 'abnormal';
 let aiMode = 'insights';
 let selectedAiReportId = '';
 let expandedAiReportId = '';
@@ -52,6 +55,95 @@ const medicalItemDictionary = [
   { name: '血红蛋白', aliases: ['HGB', 'Hb'], category: '血常规', meaning: '血红蛋白反映血液携氧能力，是评估贫血的重要指标。', highMeaning: '偏高可能与血液浓缩、缺氧或个体差异有关。', lowMeaning: '偏低可能提示贫血或失血风险，需要进一步明确原因。', normalMeaning: '当前结果位于参考范围内，通常提示携氧能力暂无明显异常。', suggestion: '建议结合红细胞、铁代谢指标和医生意见综合判断。' },
   { name: '血小板', aliases: ['PLT', '血小板计数'], category: '血常规', meaning: '血小板参与止血和凝血过程，是血常规的重要组成部分。', highMeaning: '偏高可能与炎症、感染、缺铁或骨髓相关因素有关。', lowMeaning: '偏低可能增加出血风险，需要结合症状和复查结果判断。', normalMeaning: '当前结果位于参考范围内，通常提示血小板暂无明显异常。', suggestion: '如有出血点、淤青或持续异常，建议咨询医生。' }
 ];
+
+addDictionaryEntries();
+
+function addDictionaryEntries() {
+  const references = [
+    ['糖化血红蛋白', ['HbA1c', 'HBA1C', '糖化'], '%', 4.0, 6.0, '4.0–6.0'],
+    ['高密度脂蛋白', ['HDL', 'HDL-C', '高密度胆固醇'], 'mmol/L', 1.0, 1.6, '1.0–1.6'],
+    ['估算肾小球滤过率', ['eGFR', 'GFR'], 'mL/min/1.73m²', 90, 120, '90–120'],
+    ['谷丙转氨酶', ['ALT', '丙氨酸氨基转移酶'], 'U/L', 0, 40, '0–40'],
+    ['谷草转氨酶', ['AST', '天门冬氨酸氨基转移酶'], 'U/L', 0, 40, '0–40'],
+    ['碱性磷酸酶', ['ALP', 'AKP'], 'U/L', 45, 125, '45–125'],
+    ['γ-谷氨酰转肽酶', ['GGT', 'γ-GT', '谷氨酰转肽酶'], 'U/L', 0, 60, '0–60'],
+    ['总胆红素', ['TBIL', 'T-BIL'], 'μmol/L', 3.4, 20.5, '3.4–20.5'],
+    ['直接胆红素', ['DBIL', 'D-BIL'], 'μmol/L', 0, 6.8, '0–6.8'],
+    ['间接胆红素', ['IBIL', 'I-BIL'], 'μmol/L', 1.7, 17.1, '1.7–17.1'],
+    ['白蛋白', ['ALB'], 'g/L', 40, 55, '40–55'],
+    ['总蛋白', ['TP'], 'g/L', 65, 85, '65–85'],
+    ['红细胞压积', ['HCT', '红细胞比容'], '%', 40, 50, '40–50'],
+    ['中性粒细胞百分比', ['NEUT%', 'NEU%', '中性粒百分比'], '%', 40, 75, '40–75'],
+    ['淋巴细胞百分比', ['LYMPH%', 'LYM%', '淋巴百分比'], '%', 20, 50, '20–50'],
+    ['中性粒细胞绝对值', ['NEUT#', 'NEU#', '中性粒细胞数'], '10^9/L', 1.8, 6.3, '1.8–6.3'],
+    ['淋巴细胞绝对值', ['LYMPH#', 'LYM#', '淋巴细胞数'], '10^9/L', 1.1, 3.2, '1.1–3.2'],
+    ['钾', ['K', 'K+'], 'mmol/L', 3.5, 5.3, '3.5–5.3'],
+    ['钠', ['Na', 'Na+'], 'mmol/L', 137, 147, '137–147'],
+    ['氯', ['Cl', 'Cl-'], 'mmol/L', 99, 110, '99–110'],
+    ['钙', ['Ca', 'Ca2+'], 'mmol/L', 2.11, 2.52, '2.11–2.52'],
+    ['镁', ['Mg', 'Mg2+'], 'mmol/L', 0.75, 1.02, '0.75–1.02'],
+    ['磷', ['P', 'PHOS'], 'mmol/L', 0.85, 1.51, '0.85–1.51'],
+    ['C反应蛋白', ['CRP'], 'mg/L', 0, 10, '0–10'],
+    ['超敏C反应蛋白', ['hs-CRP', 'hsCRP'], 'mg/L', 0, 3, '0–3'],
+    ['尿蛋白', ['PRO', '尿PRO'], 'mg/L', 0, 150, '0–150'],
+    ['尿糖', ['GLU-U', '尿糖GLU'], 'mmol/L', 0, 0.8, '0–0.8'],
+    ['尿酮体', ['KET'], 'mmol/L', 0, 0.5, '0–0.5'],
+    ['尿潜血', ['BLD', 'OB'], 'cells/μL', 0, 10, '0–10'],
+    ['尿白细胞', ['LEU'], 'cells/μL', 0, 25, '0–25'],
+    ['尿亚硝酸盐', ['NIT'], '', 0, 0, '阴性'],
+    ['尿比重', ['SG'], '', 1.005, 1.030, '1.005–1.030'],
+    ['尿pH', ['pH-U', '尿PH'], '', 5.0, 8.0, '5.0–8.0'],
+    ['促甲状腺激素', ['TSH'], 'mIU/L', 0.27, 4.2, '0.27–4.2'],
+    ['游离甲状腺素', ['FT4'], 'pmol/L', 12, 22, '12–22'],
+    ['游离三碘甲状腺原氨酸', ['FT3'], 'pmol/L', 3.1, 6.8, '3.1–6.8']
+  ];
+  references.forEach(([name, aliases, unit, refLow, refHigh, refText]) => {
+    if (!labReferenceDictionary.some(entry => entry.name === name)) labReferenceDictionary.push({ name, aliases, unit, refLow, refHigh, refText });
+  });
+  const medicalEntries = [
+    ['糖化血红蛋白', ['HbA1c', 'HBA1C', '糖化'], '糖代谢', '糖化血红蛋白反映近 2–3 个月平均血糖水平，常用于糖尿病风险评估和血糖控制观察。', '偏高可能提示近期平均血糖偏高或糖代谢控制不佳。', '偏低较少见，可能与低血糖风险、贫血或检测因素有关。', '建议结合空腹血糖、餐后血糖、用药情况和医生意见综合判断。'],
+    ['高密度脂蛋白', ['HDL', 'HDL-C', '高密度胆固醇'], '血脂', '高密度脂蛋白常被用于评估血脂代谢和心血管风险保护因素。', '偏高通常临床风险较低，但仍需结合整体血脂情况判断。', '偏低可能与运动不足、体重、吸烟或代谢异常有关。', '建议结合低密度脂蛋白、总胆固醇和整体心血管风险评估。'],
+    ['估算肾小球滤过率', ['eGFR', 'GFR'], '肾功能', 'eGFR 用于估算肾小球滤过能力，是观察肾功能的重要指标。', '偏高多需结合年龄、体型和检测背景判断。', '偏低可能提示肾小球滤过功能下降，需要结合肌酐、尿常规和复查结果。', '建议结合医生评估和连续复查观察变化。'],
+    ['谷丙转氨酶', ['ALT', '丙氨酸氨基转移酶'], '肝功能', '谷丙转氨酶主要用于观察肝细胞损伤相关情况。', '偏高可能与肝细胞损伤、脂肪肝、饮酒、药物或剧烈运动等因素有关。', '偏低通常临床意义较小。', '建议结合谷草转氨酶、胆红素、用药和医生意见判断。'],
+    ['谷草转氨酶', ['AST', '天门冬氨酸氨基转移酶'], '肝功能', '谷草转氨酶可反映肝脏、肌肉等组织相关酶学变化。', '偏高可能与肝细胞损伤、肌肉损伤、饮酒或药物影响有关。', '偏低通常临床意义较小。', '建议结合 ALT、GGT、肌酸激酶和医生意见综合判断。'],
+    ['碱性磷酸酶', ['ALP', 'AKP'], '肝胆/骨代谢', '碱性磷酸酶与肝胆系统和骨代谢相关。', '偏高可能与胆汁淤积、骨代谢活跃或生理因素有关。', '偏低较少见，需结合营养和其他指标判断。', '建议结合 GGT、胆红素、年龄和医生意见判断。'],
+    ['γ-谷氨酰转肽酶', ['GGT', 'γ-GT', '谷氨酰转肽酶'], '肝胆功能', 'GGT 常用于观察肝胆系统和酒精、药物相关影响。', '偏高可能与胆汁淤积、饮酒、脂肪肝或药物影响有关。', '偏低通常临床意义较小。', '建议结合 ALT、AST、ALP 和生活方式综合评估。'],
+    ['总胆红素', ['TBIL', 'T-BIL'], '肝胆功能', '总胆红素反映胆红素代谢总体情况。', '偏高可能与胆红素代谢、肝胆排泄或溶血相关因素有关。', '偏低通常临床意义较小。', '建议结合直接/间接胆红素和医生意见判断。'],
+    ['直接胆红素', ['DBIL', 'D-BIL'], '肝胆功能', '直接胆红素用于观察结合胆红素水平和胆汁排泄情况。', '偏高可能与胆汁排泄受阻或肝胆系统异常有关。', '偏低通常临床意义较小。', '建议结合总胆红素、ALP、GGT 判断。'],
+    ['间接胆红素', ['IBIL', 'I-BIL'], '肝胆/血液', '间接胆红素用于观察未结合胆红素水平。', '偏高可能与溶血、胆红素代谢或肝脏摄取处理相关因素有关。', '偏低通常临床意义较小。', '建议结合血常规、直接胆红素和医生意见判断。'],
+    ['白蛋白', ['ALB'], '肝功能/营养', '白蛋白反映蛋白营养、肝合成能力和体液状态。', '偏高可能与脱水或血液浓缩有关。', '偏低可能与营养不足、肝合成下降或蛋白丢失有关。', '建议结合总蛋白、肝肾功能和营养状态判断。'],
+    ['总蛋白', ['TP'], '肝功能/营养', '总蛋白反映血清蛋白总体水平。', '偏高可能与脱水、慢性炎症或免疫球蛋白变化有关。', '偏低可能与营养不足、肝合成下降或蛋白丢失有关。', '建议结合白蛋白、球蛋白和医生意见判断。'],
+    ['红细胞压积', ['HCT', '红细胞比容'], '血常规', '红细胞压积反映红细胞在血液中的体积分数。', '偏高可能与脱水、血液浓缩或缺氧相关因素有关。', '偏低可能与贫血、失血或稀释状态有关。', '建议结合红细胞和血红蛋白综合判断。'],
+    ['中性粒细胞百分比', ['NEUT%', 'NEU%', '中性粒百分比'], '血常规', '中性粒细胞百分比用于观察白细胞分类构成。', '偏高可能与细菌感染、炎症或应激有关。', '偏低可能与病毒感染、药物或骨髓造血相关因素有关。', '建议结合白细胞总数、绝对值和症状判断。'],
+    ['淋巴细胞百分比', ['LYMPH%', 'LYM%', '淋巴百分比'], '血常规', '淋巴细胞百分比用于观察免疫细胞分类构成。', '偏高可能与病毒感染恢复期或免疫相关变化有关。', '偏低可能与应激、感染或药物影响有关。', '建议结合白细胞总数和临床症状判断。'],
+    ['中性粒细胞绝对值', ['NEUT#', 'NEU#', '中性粒细胞数'], '血常规', '中性粒细胞绝对值反映中性粒细胞实际数量。', '偏高可能与感染、炎症或应激有关。', '偏低可能增加感染风险，需要结合症状和复查结果。', '建议结合白细胞总数和医生意见判断。'],
+    ['淋巴细胞绝对值', ['LYMPH#', 'LYM#', '淋巴细胞数'], '血常规', '淋巴细胞绝对值反映淋巴细胞实际数量。', '偏高可能与病毒感染或免疫相关变化有关。', '偏低可能与感染、药物或免疫状态有关。', '建议结合分类百分比和症状判断。'],
+    ['钾', ['K', 'K+'], '电解质', '钾是维持神经肌肉和心脏电活动的重要电解质。', '偏高可能与肾排泄减少、标本溶血或用药有关。', '偏低可能与摄入不足、丢失增加或用药有关。', '钾异常需重视，建议结合症状、心电图和医生意见判断。'],
+    ['钠', ['Na', 'Na+'], '电解质', '钠反映体液平衡和渗透压状态。', '偏高可能与脱水或水分摄入不足有关。', '偏低可能与水钠平衡异常、药物或内分泌因素有关。', '建议结合症状、饮水和医生意见判断。'],
+    ['氯', ['Cl', 'Cl-'], '电解质', '氯与酸碱平衡和体液状态相关。', '偏高或偏低都需结合钠、钾和酸碱状态判断。', '偏低可能与呕吐、利尿剂或酸碱平衡变化有关。', '建议结合其他电解质综合判断。'],
+    ['钙', ['Ca', 'Ca2+'], '电解质/骨代谢', '钙与骨代谢、肌肉收缩和神经传导相关。', '偏高可能与甲状旁腺、骨代谢或用药相关因素有关。', '偏低可能与维生素D、白蛋白或甲状旁腺相关因素有关。', '建议结合白蛋白、维生素D和医生意见判断。'],
+    ['镁', ['Mg', 'Mg2+'], '电解质', '镁参与神经肌肉和多种酶反应。', '偏高可能与肾排泄减少或补充过量有关。', '偏低可能与摄入不足、胃肠丢失或用药有关。', '建议结合症状和其他电解质判断。'],
+    ['磷', ['P', 'PHOS'], '电解质/骨代谢', '磷与骨代谢、能量代谢和肾功能相关。', '偏高可能与肾功能、甲状旁腺或饮食相关因素有关。', '偏低可能与营养、维生素D或代谢状态有关。', '建议结合钙、肾功能和医生意见判断。'],
+    ['C反应蛋白', ['CRP'], '炎症相关', 'C反应蛋白是反映炎症反应的常用指标。', '偏高提示体内可能存在炎症、感染或组织损伤等情况。', '偏低通常提示未见明显炎症反应。', '建议结合症状、血常规和医生意见判断。'],
+    ['超敏C反应蛋白', ['hs-CRP', 'hsCRP'], '炎症/心血管风险', '超敏C反应蛋白可用于观察低水平炎症和心血管风险相关状态。', '偏高可能与炎症、感染或心血管风险因素有关。', '偏低通常提示低水平炎症不明显。', '建议结合症状、血脂和医生意见综合判断。'],
+    ['尿蛋白', ['PRO', '尿PRO'], '尿常规', '尿蛋白用于观察尿液中蛋白水平，可辅助评估肾脏滤过屏障。', '偏高可能与肾脏、泌尿系统或运动发热等因素有关。', '偏低或阴性通常提示该项暂无明显异常。', '建议结合尿沉渣、肾功能和复查结果判断。'],
+    ['尿糖', ['GLU-U', '尿糖GLU'], '尿常规/糖代谢', '尿糖反映尿液中葡萄糖情况。', '阳性或偏高可能与血糖升高或肾糖阈变化有关。', '阴性通常提示尿糖暂无明显异常。', '建议结合血糖和糖化血红蛋白判断。'],
+    ['尿酮体', ['KET'], '尿常规/代谢', '尿酮体反映脂肪分解代谢产物。', '阳性可能与饥饿、低碳饮食、呕吐或糖代谢异常有关。', '阴性通常提示该项暂无明显异常。', '建议结合血糖、饮食状态和医生意见判断。'],
+    ['尿潜血', ['BLD', 'OB'], '尿常规', '尿潜血用于观察尿液中红细胞或血红蛋白相关反应。', '阳性可能与泌尿系统炎症、结石、月经污染或运动等因素有关。', '阴性通常提示该项暂无明显异常。', '建议结合尿沉渣和症状复查判断。'],
+    ['尿白细胞', ['LEU'], '尿常规', '尿白细胞用于观察泌尿系统炎症相关情况。', '偏高或阳性可能与泌尿系统感染或标本污染有关。', '阴性通常提示白细胞暂无明显异常。', '建议结合尿亚硝酸盐、症状和医生意见判断。'],
+    ['尿亚硝酸盐', ['NIT'], '尿常规', '尿亚硝酸盐可辅助提示部分细菌感染线索。', '阳性可能提示细菌相关尿路感染风险。', '阴性不能完全排除感染。', '建议结合尿白细胞、症状和尿培养判断。'],
+    ['尿比重', ['SG'], '尿常规', '尿比重反映尿液浓缩和稀释情况。', '偏高可能与饮水少、脱水或尿液浓缩有关。', '偏低可能与饮水多或浓缩功能变化有关。', '建议结合饮水、肾功能和复查判断。'],
+    ['尿pH', ['pH-U', '尿PH'], '尿常规', '尿pH反映尿液酸碱度。', '偏高可能与饮食、感染或标本因素有关。', '偏低可能与饮食结构或代谢状态有关。', '建议结合尿常规其他项目综合判断。'],
+    ['促甲状腺激素', ['TSH'], '甲状腺功能', 'TSH 用于观察垂体-甲状腺轴调节状态。', '偏高可能提示甲状腺功能减退倾向或调节变化。', '偏低可能提示甲状腺功能亢进倾向或药物影响。', '建议结合 FT3、FT4、症状和医生意见判断。'],
+    ['游离甲状腺素', ['FT4'], '甲状腺功能', 'FT4 反映游离甲状腺素水平。', '偏高可能与甲状腺功能亢进倾向或用药有关。', '偏低可能与甲状腺功能减退倾向有关。', '建议结合 TSH、FT3 和医生意见判断。'],
+    ['游离三碘甲状腺原氨酸', ['FT3'], '甲状腺功能', 'FT3 反映游离三碘甲状腺原氨酸水平。', '偏高可能与甲状腺功能亢进倾向有关。', '偏低可能与甲状腺功能减退、非甲状腺疾病或营养状态有关。', '建议结合 TSH、FT4 和医生意见判断。']
+  ];
+  medicalEntries.forEach(([name, aliases, category, meaning, highMeaning, lowMeaning, suggestion]) => {
+    if (!medicalItemDictionary.some(entry => entry.name === name)) {
+      medicalItemDictionary.push({ name, aliases, category, meaning, highMeaning, lowMeaning, normalMeaning: '当前结果位于参考范围内，通常提示该指标暂无明显异常。', suggestion: `${suggestion} 参考范围以原报告为准，系统默认值仅用于辅助理解。` });
+    }
+  });
+}
 
 const sampleReports = [
   { id: 'r001', patient, reportType: '生化检验', hospital: '市第一人民医院', date: '2026-03-28', items: [
@@ -294,9 +386,14 @@ function parseReferenceRange(rangeText) {
 function normalizeLabItemName(itemName) {
   const normalized = String(itemName || '').trim().toLowerCase();
   if (!normalized) return '';
+  const exact = labReferenceDictionary.find(entry => {
+    const names = [entry.name, ...(entry.aliases || [])].map(name => String(name).trim().toLowerCase());
+    return names.includes(normalized);
+  });
+  if (exact) return exact.name;
   const found = labReferenceDictionary.find(entry => {
     const names = [entry.name, ...(entry.aliases || [])].map(name => String(name).trim().toLowerCase());
-    return names.includes(normalized) || names.some(name => normalized.includes(name) || name.includes(normalized));
+    return names.some(name => name.length >= 2 && normalized.length >= 2 && (normalized.includes(name) || name.includes(normalized)));
   });
   return found ? found.name : String(itemName || '').trim();
 }
@@ -553,9 +650,46 @@ function renderOverview() {
       <button class="hero-filter" data-go="upload"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
     </section>
     <article class="card patient-card rich-card"><div class="avatar">👨🏻‍🦳</div><div><div class="patient-name">${patient.name}<span class="age-pill">${patient.age}岁</span></div><div class="patient-id">ID: ${patient.patientId}</div></div><div class="score-ring"><span>健康评分<br>82分</span></div></article>
-    <div class="stats"><article class="card stat-card"><strong>${total}</strong><span>总项目</span></article><article class="card stat-card"><strong>${normal}</strong><span>正常</span></article><article class="card stat-card"><strong class="red">${abnormal}</strong><span>异常</span></article></div>
+    <div class="stats"><button class="card stat-card ${overviewItemFilter === 'all' ? 'active' : ''}" data-overview-filter="all"><strong>${total}</strong><span>总项目</span></button><button class="card stat-card ${overviewItemFilter === 'normal' ? 'active' : ''}" data-overview-filter="normal"><strong>${normal}</strong><span>正常</span></button><button class="card stat-card ${overviewItemFilter === 'abnormal' ? 'active' : ''}" data-overview-filter="abnormal"><strong class="red">${abnormal}</strong><span>异常</span></button></div>
+    ${renderOverviewItemBreakdown(report, overviewItemFilter)}
     <article class="card section-card trend-summary-card"><div class="section-head"><h2>趋势摘要</h2><button data-go="trends" data-item-name="空腹血糖">全部指标 ></button></div><div class="trend-summary-top"><div><div class="metric-label">空腹血糖 (mmol/L)</div><div class="metric-value"><strong>${latest?.value ?? '-'}</strong><span class="badge ${latest?.status || 'normal'}">${statusText(latest?.status || 'normal')}</span></div></div><div class="range-pill">参考 ${latest ? `${latest.refLow}-${latest.refHigh}` : '3.9-6.1'}</div></div>${renderOverviewChart(trend)}</article>
     ${report ? `<article class="card section-card"><div class="section-head"><h2>近期异常指标</h2><button data-go="reports">查看全部 ></button></div><div class="abnormal-list">${bad.length ? bad.map(i => `<button class="abnormal-row" data-go="trends" data-item-name="${esc(i.name)}"><strong>${esc(i.name)}</strong><span>${formatValue(i)}</span><small class="badge ${i.status}">${statusText(i.status)}</small></button>`).join('') : '<div class="empty-state compact">当前最新报告未发现明显异常指标。</div>'}</div><button class="primary-btn" style="margin-top:16px" data-go="upload">＋ 上传新报告</button></article>` : renderEmptyState('暂无报告数据，请先上传或录入一份检验报告。', '上传新报告', 'upload')}`;
+  bindOverviewStatsEvents(root, report);
+}
+function renderOverviewItemBreakdown(report, filter = 'abnormal') {
+  if (!report) return '';
+  const items = report.items.filter(item => filter === 'all' ? true : filter === 'normal' ? item.status === 'normal' : item.status !== 'normal');
+  const title = filter === 'all' ? '全部项目' : filter === 'normal' ? '正常项目' : '异常项目';
+  const highCount = report.items.filter(item => item.status === 'high').length;
+  const lowCount = report.items.filter(item => item.status === 'low').length;
+  return `<article class="card section-card overview-breakdown" id="overview-breakdown"><div class="section-head"><h2>${title}</h2><span>${items.length} 项</span></div>${filter === 'abnormal' ? `<p class="breakdown-note">偏高 ${highCount} 项 · 偏低 ${lowCount} 项</p>` : ''}<div class="overview-item-list">${items.length ? items.map((item, index) => renderOverviewBreakdownItem(item, index)).join('') : `<div class="empty-state compact">当前没有${title}。</div>`}</div>${filter === 'abnormal' && items.length ? `<button class="outline-btn" data-go="ai-insights" data-report-id="${esc(report.id)}">去 AI 解读</button>` : ''}</article>`;
+}
+function renderOverviewBreakdownItem(item, index) {
+  return `<article class="overview-item-card" data-overview-item-index="${index}"><div class="overview-item-main"><div><strong>${esc(item.name)}</strong><p>${esc(formatValue(item))} · 参考 ${esc(formatRange(item))}</p></div><span class="status-badge ${item.status || 'unknown'}">${statusText(item.status)}</span></div><div class="lab-item-meta"><span class="ref-source-badge ${item.refSource || 'unknown'}">${refSourceText(item.refSource || 'unknown')}</span><button class="outline-btn explanation-toggle" type="button" data-overview-explain="${index}">查看解释</button></div><div class="explanation-panel" hidden></div></article>`;
+}
+function bindOverviewStatsEvents(root, report) {
+  root.querySelectorAll('[data-overview-filter]').forEach(button => {
+    button.onclick = () => {
+      overviewItemFilter = button.dataset.overviewFilter || 'abnormal';
+      renderOverview();
+    };
+  });
+  root.querySelector('#overview-breakdown')?.addEventListener('click', event => {
+    const button = event.target.closest('[data-overview-explain]');
+    if (!button || !report) return;
+    const index = Number(button.dataset.overviewExplain);
+    const filteredItems = report.items.filter(item => overviewItemFilter === 'all' ? true : overviewItemFilter === 'normal' ? item.status === 'normal' : item.status !== 'normal');
+    const item = filteredItems[index];
+    const panel = button.closest('.overview-item-card')?.querySelector('.explanation-panel');
+    if (!item || !panel) return;
+    const willOpen = panel.hidden;
+    if (willOpen && !panel.dataset.loaded) {
+      panel.innerHTML = renderExplanationPanel(explainLabItem(item));
+      panel.dataset.loaded = '1';
+    }
+    panel.hidden = !willOpen;
+    button.textContent = willOpen ? '收起解释' : '查看解释';
+  });
 }
 function renderUpload() {
   const root = document.querySelector('#upload');
@@ -1186,17 +1320,90 @@ function renderTrends() {
   const delta = previous ? latest.value - previous.value : 0;
   const pct = previous && previous.value ? (delta / previous.value * 100) : 0;
   const meta = getTrendMeta(selectedTrendItem, latest);
+  if (!selectedTrendPointKey || !data.some(point => trendPointKey(point) === selectedTrendPointKey)) selectedTrendPointKey = trendPointKey(latest);
+  const selectedPoint = data.find(point => trendPointKey(point) === selectedTrendPointKey) || latest;
   document.querySelector('#trends').innerHTML = `${topBar('趋势分析', 'reports')}
     <section class="trend-hero-panel ${latest?.status === 'normal' ? 'ok' : 'warn'}">
       <div class="trend-hero-head"><button class="ghost-back" data-go="reports">‹</button><label class="hero-metric-select"><select id="trend-select">${names.map(n=>`<option ${n===selectedTrendItem?'selected':''}>${esc(n)}</option>`).join('')}</select></label><button class="ghost-more">•••</button></div>
       <div class="trend-number-row"><div><strong>${latest?.value ?? '-'}</strong><span>${esc(latest?.unit || '')}</span><p>${latest?.date || ''}</p></div><div class="trend-delta"><b>${delta >= 0 ? '↑' : '↓'} ${Math.abs(pct).toFixed(2)}%</b><small>较上次</small></div></div>
       <article class="card trend-chart-card"><div class="chart-period"><button>‹</button><span>${data[0]?.date.replaceAll('-', '') || ''} – ${latest?.date.replaceAll('-', '') || ''}</span><button>›</button></div>${renderChart(data, true)}</article>
     </section>
-    <div class="trend-tabs"><button class="active">名词解释</button><button>异常分析</button><button>历史记录</button></div>
+    ${renderTrendPointDetail(selectedPoint, data)}
+    <div class="trend-tabs"><button class="${trendDetailTab === 'explain' ? 'active' : ''}" data-trend-tab="explain">名词解释</button><button class="${trendDetailTab === 'analysis' ? 'active' : ''}" data-trend-tab="analysis">异常分析</button><button class="${trendDetailTab === 'history' ? 'active' : ''}" data-trend-tab="history">历史记录</button></div>
     <article class="card risk-card"><h2>状态评估</h2><p>正常范围区间 <strong>${latest ? `${latest.refLow}~${latest.refHigh} ${latest.unit}` : '-'}</strong></p>${renderRiskScale(latest)}<div class="risk-labels"><span>理想</span><span>低风险</span><span>中风险</span><span>高风险</span></div></article>
-    <article class="card explain-card"><h2>医学解释</h2><p>${esc(meta.explain)}</p><ul>${meta.points.map(point => `<li>${esc(point)}</li>`).join('')}</ul></article>
+    ${renderTrendTabContent(trendDetailTab, selectedTrendItem, data, meta)}
     <button class="primary-btn add-data-btn" data-go="upload">添加数据</button>`;
-  document.querySelector('#trend-select').onchange = e => { selectedTrendItem = e.target.value; renderTrends(); };
+  document.querySelector('#trend-select').onchange = e => { selectedTrendItem = e.target.value; selectedTrendPointKey = ''; trendDetailTab = 'explain'; renderTrends(); };
+  bindTrendInteractions(data);
+}
+function trendPointKey(point) {
+  return point ? `${point.reportId || ''}|${point.date}|${point.name}` : '';
+}
+function bindTrendInteractions(data) {
+  const root = document.querySelector('#trends');
+  root.querySelectorAll('[data-trend-index]').forEach(target => {
+    target.addEventListener('click', () => {
+      const point = data[Number(target.dataset.trendIndex)];
+      if (!point) return;
+      selectedTrendPointKey = trendPointKey(point);
+      renderTrends();
+    });
+  });
+  root.querySelectorAll('[data-trend-tab]').forEach(button => {
+    button.onclick = () => {
+      trendDetailTab = button.dataset.trendTab || 'explain';
+      renderTrends();
+    };
+  });
+  root.querySelectorAll('[data-trend-report]').forEach(button => {
+    button.onclick = () => {
+      selectedReportId = button.dataset.trendReport;
+      setStoredSelectedReportId(selectedReportId);
+      showScreen('report-detail');
+    };
+  });
+}
+function renderTrendPointDetail(point, data) {
+  const report = getReports().find(item => item.id === point?.reportId);
+  const index = data.findIndex(item => trendPointKey(item) === trendPointKey(point));
+  const previous = index > 0 ? data[index - 1] : null;
+  const diff = previous ? point.value - previous.value : 0;
+  const direction = !previous ? '暂无' : diff > 0 ? '上升' : diff < 0 ? '下降' : '持平';
+  const pct = previous && previous.value ? `${Math.abs(diff / previous.value * 100).toFixed(2)}%` : '暂无';
+  return `<article class="card trend-point-detail"><div class="section-head"><h2>时间点详情</h2><span>${esc(point.date)}</span></div><div class="trend-point-grid"><div><small>报告类型</small><strong>${esc(report?.reportType || '未知')}</strong></div><div><small>医院</small><strong>${esc(report?.hospital || '未知')}</strong></div><div><small>指标</small><strong>${esc(point.name)}</strong></div><div><small>当前数值</small><strong>${esc(point.value)} ${esc(point.unit || '')}</strong></div><div><small>参考范围</small><strong>${esc(formatRange(point))}</strong></div><div><small>状态</small><strong>${statusText(point.status)}</strong></div><div><small>较上一条</small><strong>${direction}</strong></div><div><small>变化</small><strong>${previous ? `${diff > 0 ? '+' : ''}${formatNumber(diff)} ${point.unit || ''} / ${pct}` : '暂无'}</strong></div></div>${report ? `<button class="outline-btn" type="button" data-trend-report="${esc(report.id)}">查看报告详情</button>` : ''}</article>`;
+}
+function renderTrendTabContent(tab, metricName, data, meta) {
+  if (tab === 'analysis') return renderTrendAbnormalAnalysis(metricName, data);
+  if (tab === 'history') return renderTrendHistory(metricName, data);
+  return renderTrendExplanation(metricName, data.at(-1), meta);
+}
+function renderTrendExplanation(metricName, latest, meta) {
+  const info = getMedicalItemInfo(metricName);
+  if (!info) return `<article class="card explain-card"><h2>${esc(metricName)}名词解释</h2><p>当前项目暂无完整解释，可结合报告参考范围和医生建议理解。</p><div class="explanation-disclaimer"><strong>安全提示</strong><p>内容仅供参考，不能替代医生诊断。</p></div></article>`;
+  return `<article class="card explain-card"><h2>${esc(info.name)}</h2><div class="explanation-title"><strong>${esc(info.category)}</strong><span>以报告参考范围为准</span></div><div class="explanation-section"><h4>指标含义</h4><p>${esc(info.meaning || meta.explain)}</p></div><div class="explanation-section"><h4>偏高可能提示</h4><p>${esc(info.highMeaning)}</p></div><div class="explanation-section"><h4>偏低可能提示</h4><p>${esc(info.lowMeaning)}</p></div><div class="explanation-section"><h4>建议</h4><p>${esc(info.suggestion)}</p></div><div class="explanation-disclaimer"><strong>安全提示</strong><p>${esc(explainLabItem(latest || { name: metricName }).disclaimer)}</p></div></article>`;
+}
+function analyzeTrendAbnormality(data) {
+  const total = data.length;
+  const normal = data.filter(item => item.status === 'normal').length;
+  const high = data.filter(item => item.status === 'high').length;
+  const low = data.filter(item => item.status === 'low').length;
+  const latest = data.at(-1);
+  const previous = data.at(-2);
+  const values = data.map(item => Number(item.value)).filter(Number.isFinite);
+  const consecutiveAbnormal = data.length >= 2 && data.slice(-2).every(item => item.status !== 'normal');
+  const direction = !previous ? '暂无' : latest.value > previous.value ? '上升' : latest.value < previous.value ? '下降' : '持平';
+  return { total, normal, high, low, latest, previous, highest: Math.max(...values), lowest: Math.min(...values), consecutiveAbnormal, direction };
+}
+function renderTrendAbnormalAnalysis(metricName, data) {
+  const analysis = analyzeTrendAbnormality(data);
+  return `<article class="card explain-card trend-analysis-card"><h2>${esc(metricName)}异常分析</h2>${data.length < 2 ? '<p>当前历史数据不足，建议积累更多报告后观察趋势。</p>' : ''}<div class="trend-point-grid"><div><small>历史记录</small><strong>${analysis.total} 次</strong></div><div><small>正常</small><strong>${analysis.normal} 次</strong></div><div><small>偏高</small><strong>${analysis.high} 次</strong></div><div><small>偏低</small><strong>${analysis.low} 次</strong></div><div><small>最近状态</small><strong>${statusText(analysis.latest?.status)}</strong></div><div><small>连续异常</small><strong>${analysis.consecutiveAbnormal ? '是' : '否'}</strong></div><div><small>最高值</small><strong>${formatNumber(analysis.highest)}</strong></div><div><small>最低值</small><strong>${formatNumber(analysis.lowest)}</strong></div><div><small>最近变化</small><strong>${analysis.direction}</strong></div></div><div class="explanation-disclaimer"><strong>安全提示</strong><p>趋势分析仅用于辅助理解，不能替代医生诊断。</p></div></article>`;
+}
+function renderTrendHistory(metricName, data) {
+  const ordered = [...data].sort((a, b) => b.date.localeCompare(a.date));
+  return `<article class="card explain-card trend-history-card"><h2>${esc(metricName)}历史记录</h2>${ordered.length ? `<div class="trend-history-list">${ordered.map(point => {
+    const report = getReports().find(item => item.id === point.reportId);
+    return `<div class="trend-history-row"><div><strong>${esc(point.date)}</strong><p>${esc(formatValue(point))} · 参考 ${esc(formatRange(point))}</p><small>${esc(report?.reportType || '未知报告')} · ${esc(report?.hospital || '未知机构')}</small></div><span class="status-badge ${point.status || 'unknown'}">${statusText(point.status)}</span>${report ? `<button class="outline-btn" type="button" data-trend-report="${esc(report.id)}">查看报告</button>` : ''}</div>`;
+  }).join('')}</div>` : '<div class="empty-state compact">暂无历史记录。</div>'}</article>`;
 }
 function renderAi() {
   const reports = [...getReports()].sort((a,b)=>b.date.localeCompare(a.date));
@@ -1523,7 +1730,8 @@ function renderChart(data, large) {
     <path class="grid-line" d="M${l} ${t}H${r}M${l} ${(t+b)/2}H${r}M${l} ${b}H${r}"/>
     ${area ? `<path class="area-fill" d="${area}"/>` : ''}
     <path class="${lineClass}" d="${path}"/>
-    ${data.map((d,i)=>`<circle class="${d.status==='normal'?'dot-teal':'dot-coral'}" cx="${x(i)}" cy="${y(d.value)}" r="${large ? 4.2 : 3.5}"/>`).join('')}
+    ${data.map((d,i)=>`<circle class="${d.status==='normal'?'dot-teal':'dot-coral'} ${trendPointKey(d) === selectedTrendPointKey ? 'selected-dot' : ''}" cx="${x(i)}" cy="${y(d.value)}" r="${large ? 4.2 : 3.5}"/>`).join('')}
+    ${large ? data.map((d,i)=>`<circle class="trend-hit-point" data-trend-index="${i}" cx="${x(i)}" cy="${y(d.value)}" r="15"><title>${esc(d.date)} ${esc(d.name)} ${esc(formatValue(d))}</title></circle>`).join('') : ''}
     ${data.map((d,i)=>`<text x="${x(i)-12}" y="${h-9}">${d.date.slice(5).replace('-','/')}</text>`).join('')}
     ${large?`<text class="range-mark" x="${r+2}" y="${y(latest.refHigh)}">上限 ${latest.refHigh}</text><text class="range-mark" x="${r+2}" y="${y(latest.refLow)}">下限 ${latest.refLow}</text>`:''}
   </svg>`;
@@ -1585,11 +1793,17 @@ function getTrendMeta(name, latest) {
 }
 
 function trendStatus(data) { if (data.length < 2) return '数据不足'; const first=data[0].value,last=data.at(-1).value; if (data.every(d=>d.status!=='normal')) return '持续异常'; if (last>first) return '逐步升高'; if (last<first) return '逐步降低'; return data.some(d=>d.status!=='normal')?'波动异常':'正常'; }
-function statusText(s) { return s === 'high' ? '偏高' : s === 'low' ? '偏低' : '正常'; }
+function statusText(s) { return s === 'high' ? '偏高' : s === 'low' ? '偏低' : s === 'normal' ? '正常' : '未知'; }
+function formatNumber(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '-';
+  return Math.abs(number) >= 100 ? number.toFixed(0) : number.toFixed(2).replace(/\.?0+$/, '');
+}
 function formatValue(i) { return `${i.value} ${i.unit || ''}`.trim(); }
 function formatRange(i) { return `${i.refLow}-${i.refHigh} ${i.unit || ''}`.trim(); }
 function esc(v) { return String(v ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); }
 function readJson(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } }
 window.appConfig=appConfig; window.appState=appState; window.reportService=reportService; window.chatService=chatService; window.setDataMode=setDataMode; window.loadReportsToState=loadReportsToState; window.refreshReportsAndRender=refreshReportsAndRender; window.checkApiHealth=checkApiHealth; window.switchToApiMode=switchToApiMode; window.switchToLocalMode=switchToLocalMode; window.apiHealthText=apiHealthText; window.labReferenceDictionary=labReferenceDictionary; window.medicalItemDictionary=medicalItemDictionary; window.normalizeReport=normalizeReport; window.normalizeReports=normalizeReports; window.normalizeLabItemName=normalizeLabItemName; window.getDefaultReferenceRange=getDefaultReferenceRange; window.getMedicalItemInfo=getMedicalItemInfo; window.explainLabItem=explainLabItem; window.getReports=getReports; window.saveReports=saveReports; window.addReport=addReport; window.calculateItemStatus=calculateItemStatus; window.getLatestReport=getLatestReport; window.getAbnormalItems=getAbnormalItems; window.getOverviewStats=getOverviewStats; window.getTrendData=getTrendData; window.trendStatus=trendStatus; window.statusText=statusText; window.formatValue=formatValue; window.formatRange=formatRange; window.generateAiInterpretation=generateAiInterpretation; window.aiInterpretationToText=aiInterpretationToText; window.generateAiInterpretationText=generateAiInterpretationText; window.generateMockChatReply=generateMockChatReply; window.getCurrentChatReport=getCurrentChatReport; window.getChatHistory=getChatHistory; window.saveChatHistory=saveChatHistory; window.clearChatHistory=clearChatHistory; window.addChatMessage=addChatMessage; window.callAiChatApi=callAiChatApi; window.findMatchedLabItem=findMatchedLabItem; window.buildReportSummaryReply=buildReportSummaryReply; window.buildItemExplanationReply=buildItemExplanationReply; window.isMedicalAdviceQuestion=isMedicalAdviceQuestion; window.renderChatPanel=renderChatPanel; window.renderChatContextCard=renderChatContextCard; window.renderChatMessages=renderChatMessages; window.renderQuickQuestions=renderQuickQuestions; window.loadPdfJsIfNeeded=loadPdfJsIfNeeded; window.extractTextFromPdfFile=extractTextFromPdfFile; window.groupTextItemsIntoLines=groupTextItemsIntoLines; window.normalizePdfText=normalizePdfText; window.parsePdfReportText=parsePdfReportText; window.parseReportMetaFromText=parseReportMetaFromText; window.parseLabItemsFromText=parseLabItemsFromText; window.parseLabLine=parseLabLine; window.parsePdfReferenceRange=parsePdfReferenceRange; window.normalizeParsedUnit=normalizeParsedUnit; window.buildReportFromParsedPdf=buildReportFromParsedPdf; window.calculatePdfParseConfidence=calculatePdfParseConfidence; window.pdfParserTestCases=pdfParserTestCases; window.runPdfParserTests=runPdfParserTests; window.renderPdfStatus=renderPdfStatus; window.renderPdfError=renderPdfError; window.renderPdfPreview=renderPdfPreview; window.renderParseDebugDetails=renderParseDebugDetails; window.collectParsedPdfPreview=collectParsedPdfPreview; window.handlePastedTextParse=handlePastedTextParse; window.renderOverview=renderOverview; window.renderReports=renderReports; window.renderTrends=renderTrends; window.renderAi=renderAi; window.renderProfile=renderProfile; window.renderUpload=renderUpload; window.bindUploadEvents=bindUploadEvents; window.createEmptyLabItemForm=createEmptyLabItemForm; window.collectUploadFormData=collectUploadFormData; window.validateUploadForm=validateUploadForm; window.saveUploadedReport=saveUploadedReport; window.renderReportDetail=renderReportDetail; window.renderLabItemCard=renderLabItemCard; window.bindReportDetailEvents=bindReportDetailEvents; window.renderExplanationPanel=renderExplanationPanel; window.renderAiInsightCards=renderAiInsightCards; window.renderAiReportCard=renderAiReportCard; window.renderAiInterpretation=renderAiInterpretation; window.renderDevTools=renderDevTools; window.getReportsCount=getReportsCount; window.getChatCount=getChatCount; window.resetReportsToSample=resetReportsToSample; window.clearReportsData=clearReportsData; window.exportReportsJson=exportReportsJson; window.importReportsJson=importReportsJson; window.syncLocalReportsToApi=syncLocalReportsToApi; window.pullApiReportsToLocal=pullApiReportsToLocal; window.refreshAfterDataChange=refreshAfterDataChange;
 window.aiInterpretationState=aiInterpretationState; window.fetchJsonWithTimeout=fetchJsonWithTimeout; window.callAiInterpretApi=callAiInterpretApi; window.requestAiInterpretation=requestAiInterpretation; window.checkAiHealth=checkAiHealth;
+window.renderOverviewItemBreakdown=renderOverviewItemBreakdown; window.bindOverviewStatsEvents=bindOverviewStatsEvents; window.renderTrendPointDetail=renderTrendPointDetail; window.renderTrendTabContent=renderTrendTabContent; window.renderTrendExplanation=renderTrendExplanation; window.analyzeTrendAbnormality=analyzeTrendAbnormality; window.renderTrendAbnormalAnalysis=renderTrendAbnormalAnalysis; window.renderTrendHistory=renderTrendHistory; window.trendPointKey=trendPointKey;
 showScreen('overview');
