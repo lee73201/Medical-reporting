@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 医疗检验报告管理与解读 Web App v1.1 标注原型</title>
+  <style>
+    :root {
+      --blue: #1f6feb;
+      --blue-2: #0ea5e9;
+      --blue-soft: #eaf4ff;
+      --ink: #102033;
+      --muted: #66758a;
+      --line: #dbe8f5;
+      --bg: #f3f8ff;
+      --card: #ffffff;
+      --green: #11a36a;
+      --green-soft: #e8f8f1;
+      --red: #e5484d;
+      --red-soft: #fff0f1;
+      --amber: #f59e0b;
+      --shadow: 0 18px 45px rgba(31, 111, 235, .12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 0%, rgba(14, 165, 233, .16), transparent 28%),
+        linear-gradient(180deg, #f7fbff 0%, #eef6ff 100%);
+    }
+    header.hero {
+      padding: 42px 44px 22px;
+      display: grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap: 24px;
+      align-items: end;
+    }
+    .hero h1 { margin: 0 0 12px; font-size: 34px; line-height: 1.18; letter-spacing: 0; }
+    .hero p { margin: 0; max-width: 720px; color: var(--muted); line-height: 1.75; }
+    .version-card { justify-self: end; background: rgba(255,255,255,.82); border: 1px solid var(--line); border-radius: 20px; padding: 18px 20px; box-shadow: var(--shadow); min-width: 310px; }
+    .version-card strong { color: var(--blue); font-size: 18px; }
+    .version-card span { display: block; margin-top: 8px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+    .prototype-board { padding: 12px 34px 60px; display: grid; gap: 32px; }
+    .page-block {
+      display: grid;
+      grid-template-columns: 420px minmax(440px, 1fr);
+      gap: 28px;
+      align-items: start;
+      background: rgba(255,255,255,.62);
+      border: 1px solid rgba(219,232,245,.9);
+      border-radius: 28px;
+      padding: 28px;
+      box-shadow: 0 12px 40px rgba(15, 72, 128, .08);
+    }
+    .phone {
+      width: 390px;
+      min-height: 760px;
+      border-radius: 42px;
+      padding: 14px;
+      background: #101827;
+      box-shadow: 0 24px 55px rgba(16, 32, 51, .22);
+      position: sticky;
+      top: 20px;
+    }
+    .phone-screen { min-height: 732px; border-radius: 32px; overflow: hidden; background: linear-gradient(180deg, #f6fbff 0%, #eef7ff 100%); position: relative; }
+    .status { height: 34px; display: flex; justify-content: space-between; align-items: center; padding: 0 22px; font-size: 12px; font-weight: 800; color: #17233a; }
+    .app-top { height: 48px; padding: 0 18px; display: grid; grid-template-columns: 42px 1fr 42px; align-items: center; }
+    .app-top h2 { margin: 0; text-align: center; font-size: 18px; }
+    .icon-btn { width: 34px; height: 34px; border-radius: 14px; border: 0; background: #fff; color: var(--blue); box-shadow: 0 8px 18px rgba(31,111,235,.1); display: grid; place-items: center; font-weight: 900; }
+    .content { padding: 12px 18px 92px; }
+    .bottom-nav { position: absolute; left: 0; right: 0; bottom: 0; height: 74px; display: grid; grid-template-columns: repeat(5, 1fr); background: rgba(255,255,255,.95); border-top: 1px solid var(--line); }
+    .bottom-nav div { display: grid; place-items: center; gap: 3px; color: #8aa0b8; font-size: 10px; font-weight: 800; }
+    .bottom-nav .active { color: var(--blue); }
+    .card { background: var(--card); border: 1px solid rgba(219,232,245,.92); border-radius: 18px; box-shadow: 0 10px 28px rgba(42, 102, 168, .08); }
+    .muted { color: var(--muted); }
+    .primary { border: 0; border-radius: 14px; min-height: 44px; color: #fff; background: linear-gradient(135deg, var(--blue), var(--blue-2)); font-weight: 900; box-shadow: 0 12px 28px rgba(31,111,235,.25); }
+    .secondary { border: 1px solid #bdd7f5; color: var(--blue); background: #f8fbff; border-radius: 13px; min-height: 38px; font-weight: 800; }
+    .badge { display: inline-flex; align-items: center; min-height: 24px; padding: 0 9px; border-radius: 999px; font-size: 11px; font-weight: 900; }
+    .badge.green { color: var(--green); background: var(--green-soft); }
+    .badge.red { color: var(--red); background: var(--red-soft); }
+    .badge.blue { color: var(--blue); background: var(--blue-soft); }
+    .section-title { display: flex; justify-content: space-between; align-items: center; margin: 18px 2px 10px; }
+    .section-title h3 { margin: 0; font-size: 15px; }
+    .section-title span { font-size: 12px; color: var(--muted); }
+
+    .auth-hero { padding: 36px 22px 16px; text-align: center; }
+    .logo { width: 64px; height: 64px; margin: 0 auto 16px; border-radius: 22px; background: linear-gradient(135deg, var(--blue), #18c1c7); color: #fff; display: grid; place-items: center; font-weight: 900; font-size: 21px; }
+    .auth-hero h2 { margin: 0 0 8px; font-size: 24px; }
+    .auth-form { margin: 12px 18px; padding: 18px; display: grid; gap: 12px; }
+    .field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); font-weight: 800; }
+    .input { height: 42px; border: 1px solid var(--line); border-radius: 13px; background: #fbfdff; padding: 0 12px; color: #8795a8; display: flex; align-items: center; }
+    .auth-switch { text-align: center; color: var(--blue); font-size: 13px; font-weight: 800; }
+
+    .patient-card { padding: 16px; display: grid; grid-template-columns: 58px 1fr 76px; gap: 12px; align-items: center; }
+    .avatar { width: 54px; height: 54px; border-radius: 20px; background: linear-gradient(135deg, #d8efff, #b6e3ff); display: grid; place-items: center; color: var(--blue); font-size: 24px; font-weight: 900; }
+    .score { width: 66px; height: 66px; border-radius: 50%; border: 7px solid #29c5b0; display: grid; place-items: center; color: var(--blue); font-weight: 900; font-size: 13px; }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-top: 10px; }
+    .stat { padding: 13px 6px; text-align: center; }
+    .stat strong { display: block; font-size: 22px; }
+    .trend-card { padding: 16px; margin-top: 12px; }
+    .trend-line { height: 96px; margin-top: 10px; background: linear-gradient(180deg, rgba(46, 196, 182, .15), transparent); border-radius: 16px; position: relative; overflow: hidden; }
+    .trend-line svg { width: 100%; height: 100%; }
+    .abnormal-row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 11px 0; border-bottom: 1px solid #edf3fa; font-size: 13px; }
+
+    .report-card { padding: 15px; margin-bottom: 12px; }
+    .report-head { display: grid; grid-template-columns: 42px 1fr auto; gap: 11px; align-items: center; }
+    .flask { width: 40px; height: 40px; border-radius: 15px; background: var(--blue-soft); color: var(--blue); display: grid; place-items: center; font-weight: 900; }
+    .report-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 13px; }
+    .report-actions button { font-size: 11px; }
+
+    .detail-summary { padding: 15px; }
+    .detail-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+    .mini-stat { padding: 11px 5px; text-align: center; background: #f7fbff; border-radius: 14px; }
+    .mini-stat strong { display: block; font-size: 18px; }
+    .lab-item { padding: 13px; margin-bottom: 10px; }
+    .lab-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+    .lab-value { margin-top: 9px; display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; }
+    .explain-box { margin-top: 10px; padding: 12px; border-radius: 14px; background: #f6fbff; color: #43546a; font-size: 12px; line-height: 1.55; }
+
+    .metric-hero { padding: 18px; background: linear-gradient(135deg, #f4f9ff, #ffffff); }
+    .metric-value { display: flex; justify-content: space-between; align-items: end; margin-top: 10px; }
+    .metric-value strong { font-size: 44px; color: var(--red); }
+    .chart-card { margin-top: 12px; padding: 14px; }
+    .chart-area { height: 190px; border-radius: 18px; background: #fff; position: relative; overflow: hidden; }
+    .tab-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+    .tab-row div { text-align: center; padding: 9px 0; border-radius: 999px; font-size: 12px; font-weight: 900; background: #eef6ff; color: var(--muted); }
+    .tab-row .active { background: var(--blue); color: #fff; }
+    .point-detail { margin-top: 12px; padding: 13px; background: #f7fbff; border-radius: 16px; font-size: 12px; line-height: 1.6; }
+
+    .ai-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 4px; background: #eaf4ff; border-radius: 16px; }
+    .ai-tabs div { text-align: center; padding: 10px; border-radius: 13px; color: var(--muted); font-weight: 900; font-size: 13px; }
+    .ai-tabs .active { background: #fff; color: var(--blue); box-shadow: 0 8px 18px rgba(31,111,235,.12); }
+    .ai-card { padding: 15px; margin-top: 12px; }
+    .chat { display: grid; gap: 10px; margin-top: 12px; }
+    .bubble { max-width: 82%; padding: 12px; border-radius: 16px; font-size: 12px; line-height: 1.6; }
+    .bubble.ai { background: #fff; border: 1px solid var(--line); }
+    .bubble.user { justify-self: end; background: var(--blue); color: #fff; }
+    .quick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .quick span { padding: 8px 10px; border-radius: 999px; background: #eef6ff; color: var(--blue); font-size: 11px; font-weight: 800; }
+    .chat-input { position: absolute; left: 16px; right: 16px; bottom: 84px; display: grid; grid-template-columns: 1fr 58px; gap: 8px; }
+    .chat-input div { height: 40px; border-radius: 999px; background: #fff; border: 1px solid var(--line); color: #9aa8ba; display: flex; align-items: center; padding-left: 14px; font-size: 12px; }
+    .chat-input button { border: 0; border-radius: 999px; background: var(--blue); color: #fff; font-weight: 900; }
+
+    .profile-card { padding: 16px; display: grid; gap: 10px; }
+    .mode-row { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-bottom: 1px solid #edf3fa; font-size: 13px; }
+    .debug-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+
+    .spec-card { background: #fff; border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow); overflow: hidden; }
+    .spec-head { padding: 20px 22px; background: linear-gradient(135deg, var(--blue), #43b8ff); color: #fff; }
+    .spec-head span { display: inline-block; margin-bottom: 8px; padding: 4px 9px; border-radius: 999px; background: rgba(255,255,255,.18); font-size: 12px; font-weight: 900; }
+    .spec-head h2 { margin: 0; font-size: 22px; }
+    .spec-grid { padding: 18px 22px 22px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .spec-item { padding: 14px; border-radius: 16px; background: #f7fbff; border: 1px solid #e3eefb; }
+    .spec-item h3 { margin: 0 0 8px; color: var(--blue); font-size: 14px; }
+    .spec-item p, .spec-item ul { margin: 0; color: #46586e; font-size: 13px; line-height: 1.65; padding-left: 0; }
+    .spec-item li { margin-left: 16px; }
+    .full { grid-column: 1 / -1; }
+    .note { padding: 13px 15px; margin-top: 12px; border-radius: 16px; background: #f7fbff; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    @media (max-width: 980px) {
+      header.hero { grid-template-columns: 1fr; padding: 28px 18px 10px; }
+      .version-card { justify-self: stretch; min-width: 0; }
+      .prototype-board { padding: 10px 12px 36px; }
+      .page-block { grid-template-columns: 1fr; padding: 16px; }
+      .phone { position: relative; top: auto; width: min(390px, 100%); margin: 0 auto; }
+      .spec-grid { grid-template-columns: 1fr; }
+      .full { grid-column: auto; }
+    }
+  </style>
+</head>
+<body>
+<header class="hero">
+  <div>
+    <h1>AI 医疗检验报告管理与解读 Web App v1.1 标注原型</h1>
+    <p>定位为检验报告管理、趋势分析和 AI 科普解读工具。当前版本保留登录、首页、报告列表、报告详情、趋势分析、AI 健康助手、Profile，不展示预约、支付、用药作为核心功能。</p>
+  </div>
+  <div class="version-card"><strong>移动端 App 风格 + 需求标注</strong><span>蓝白医疗健康视觉，左侧为 UI 原型图，右侧为 PM/研发/测试可用的需求说明卡片。</span></div>
+</header>
+<main class="prototype-board">
+
+  <section class="page-block" id="login">
+    <div class="phone"><div class="phone-screen">
+      <div class="status"><span>9:41</span><span>5G 100%</span></div>
+      <div class="auth-hero"><div class="logo">AI</div><h2>医检报告通</h2><p class="muted">登录后同步你的检验报告、趋势与 AI 解读记录</p></div>
+      <div class="card auth-form">
+        <div class="ai-tabs"><div class="active">登录</div><div>注册</div></div>
+        <label class="field">邮箱<div class="input">test@example.com</div></label>
+        <label class="field">密码<div class="input">••••••••</div></label>
+        <button class="primary">登录</button>
+        <div class="auth-switch">没有账号？创建新账号</div>
+        <div class="note">API 模式登录成功后保存 JWT token；local 模式可离线演示，数据仅保存在当前浏览器。</div>
+      </div>
+    </div></div>
+    <article class="spec-card"><div class="spec-head"><span>页面 01</span><h2>登录/注册页</h2></div><div class="spec-grid">
+      <div class="spec-item"><h3>页面目标</h3><p>完成用户身份验证，为 API 模式下的报告数据隔离提供登录态。</p></div>
+      <div class="spec-item"><h3>用户场景</h3><p>新用户注册账号；老用户登录后查看自己的检验报告和 AI 解读。</p></div>
+      <div class="spec-item"><h3>核心功能</h3><ul><li>邮箱密码登录</li><li>姓名、邮箱、密码注册</li><li>保存 JWT token</li><li>切换 local 离线模式</li></ul></div>
+      <div class="spec-item"><h3>交互规则</h3><ul><li>登录成功进入首页</li><li>注册成功自动登录</li><li>401/token 失效自动退出</li><li>密码至少 8 位且不超过 72 bytes</li></ul></div>
+      <div class="spec-item"><h3>前置条件</h3><p>API 模式下后端可访问；注册需邮箱未被占用。</p></div>
+      <div class="spec-item"><h3>后置结果</h3><p>本地保存 `lab_auth_token` 和 `lab_auth_user`；后续 API 自动携带 Authorization。</p></div>
+      <div class="spec-item full"><h3>数据字段/API</h3><p>POST /api/auth/login；POST /api/auth/register；GET /api/auth/me；请求字段：email、password、name；返回：access_token、token_type、user。</p></div>
+      <div class="spec-item full"><h3>验收标准</h3><ul><li>成功登录后能进入 Dashboard</li><li>注册重复邮箱提示错误</li><li>无 token 访问 API 模式页面会回到登录页</li><li>不在前端存储明文密码</li></ul></div>
+    </div></article>
+  </section>
+
+  <section class="page-block" id="dashboard">
+    <div class="phone"><div class="phone-screen">
+      <div class="status"><span>9:41</span><span>5G 100%</span></div><div class="app-top"><button class="icon-btn"></button><h2>检验概览</h2><button class="icon-btn">🔔</button></div>
+      <div class="content">
+        <div class="card patient-card"><div class="avatar">王</div><div><strong>王先生 <span class="badge green">70岁</span></strong><p class="muted">ID: 123XXXX</p></div><div class="score">健康<br>82分</div></div>
+        <div class="stats"><div class="card stat"><strong>11</strong><span class="muted">总项目</span></div><div class="card stat"><strong style="color:var(--green)">8</strong><span class="muted">正常</span></div><div class="card stat"><strong style="color:var(--red)">3</strong><span class="muted">异常</span></div></div>
+        <div class="card trend-card"><div class="section-title"><h3>趋势摘要</h3><span>全部指标 ></span></div><div><span class="muted">空腹血糖</span><br><strong style="font-size:34px;color:var(--red)">7.4</strong> mmol/L <span class="badge red">偏高</span></div><div class="trend-line"><svg viewBox="0 0 300 100"><path d="M20 76 C80 70 100 60 135 55 S190 40 226 30 S260 24 282 20" fill="none" stroke="#1f6feb" stroke-width="4"/><circle cx="282" cy="20" r="5" fill="#e5484d"/></svg></div></div>
+        <div class="card trend-card"><div class="section-title"><h3>近期异常指标</h3><span>查看全部 ></span></div><div class="abnormal-row"><strong>空腹血糖</strong><span>7.4 mmol/L</span><span class="badge red">偏高</span></div><div class="abnormal-row"><strong>低密度脂蛋白</strong><span>3.7 mmol/L</span><span class="badge red">偏高</span></div></div>
+      </div><div class="bottom-nav"><div class="active">⌂<span>首页</span></div><div>▤<span>报告</span></div><div>⌁<span>趋势</span></div><div>AI<span>助手</span></div><div>○<span>我的</span></div></div>
+    </div></div>
+    <article class="spec-card"><div class="spec-head"><span>页面 02</span><h2>首页 Dashboard</h2></div><div class="spec-grid">
+      <div class="spec-item"><h3>页面目标</h3><p>汇总最新报告的健康状态、异常指标和关键趋势。</p></div><div class="spec-item"><h3>用户场景</h3><p>用户打开 App 后快速判断最近一次体检报告是否存在需要关注的指标。</p></div>
+      <div class="spec-item"><h3>核心功能</h3><ul><li>患者信息展示</li><li>总/正常/异常项目统计</li><li>近期异常指标</li><li>关键指标趋势摘要</li></ul></div>
+      <div class="spec-item"><h3>交互规则</h3><ul><li>统计卡片可展开/收起项目明细</li><li>点击异常指标进入趋势分析并选中指标</li><li>上传按钮进入报告录入</li></ul></div>
+      <div class="spec-item"><h3>前置条件</h3><p>存在至少一份报告；无报告时展示空状态和录入入口。</p></div><div class="spec-item"><h3>后置结果</h3><p>用户可进入报告详情、趋势页或上传新报告。</p></div>
+      <div class="spec-item full"><h3>数据字段/API</h3><p>GET /api/reports，需 Authorization: Bearer token；local 模式读取 lab_reports_v2。字段：patient、reportType、hospital、date、items.status。</p></div>
+      <div class="spec-item full"><h3>验收标准</h3><ul><li>统计数量与最新报告 items 一致</li><li>异常用红色，正常用绿色/灰色</li><li>API 模式只显示当前 user_id 的报告</li><li>后端不可用时展示错误而非崩溃</li></ul></div>
+    </div></article>
+  </section>
+
+  <section class="page-block" id="reports">
+    <div class="phone"><div class="phone-screen">
+      <div class="status"><span>9:41</span><span>5G 100%</span></div><div class="app-top"><button class="icon-btn"></button><h2>报告列表</h2><button class="icon-btn">＋</button></div>
+      <div class="content">
+        <div class="report-card card"><div class="report-head"><div class="flask">⚗</div><div><strong>生化检验</strong><p class="muted">市第一人民医院</p></div><span class="muted">2026-03-28</span></div><p><span class="badge red">异常 2 项</span> <span class="badge blue">总项目 11 项</span></p><div class="report-actions"><button class="secondary">查看详情</button><button class="secondary">AI 解读</button><button class="secondary">趋势分析</button></div></div>
+        <div class="report-card card"><div class="report-head"><div class="flask">⚗</div><div><strong>血常规</strong><p class="muted">社区卫生服务中心</p></div><span class="muted">2026-02-18</span></div><p><span class="badge green">异常 0 项</span> <span class="badge blue">总项目 8 项</span></p><div class="report-actions"><button class="secondary">查看详情</button><button class="secondary">AI 解读</button><button class="secondary">趋势分析</button></div></div>
+        <div class="report-card card"><div class="report-head"><div class="flask">⚗</div><div><strong>尿常规</strong><p class="muted">市第一人民医院</p></div><span class="muted">2026-01-12</span></div><p><span class="badge red">异常 1 项</span> <span class="badge blue">总项目 9 项</span></p><div class="report-actions"><button class="secondary">查看详情</button><button class="secondary">AI 解读</button><button class="secondary">趋势分析</button></div></div>
+      </div><div class="bottom-nav"><div>⌂<span>首页</span></div><div class="active">▤<span>报告</span></div><div>⌁<span>趋势</span></div><div>AI<span>助手</span></div><div>○<span>我的</span></div></div>
+    </div></div>
+    <article class="spec-card"><div class="spec-head"><span>页面 03</span><h2>报告列表页</h2></div><div class="spec-grid">
+      <div class="spec-item"><h3>页面目标</h3><p>展示用户历史检验报告，提供详情、AI 解读和趋势分析入口。</p></div><div class="spec-item"><h3>用户场景</h3><p>用户想查看过往某次报告，或针对某份报告进行 AI 解读。</p></div>
+      <div class="spec-item"><h3>核心功能</h3><ul><li>报告按日期倒序</li><li>展示报告类型/医院/日期</li><li>展示总项目和异常项目数</li><li>上传入口</li></ul></div>
+      <div class="spec-item"><h3>交互规则</h3><ul><li>查看详情进入报告详情页</li><li>AI 解读进入 AI 页并高亮该报告</li><li>趋势分析进入趋势页并默认选中首个指标</li></ul></div>
+      <div class="spec-item"><h3>前置条件</h3><p>用户已登录 API 模式，或处于 local 模式且本地有报告。</p></div><div class="spec-item"><h3>后置结果</h3><p>设置 selectedReportId，用于详情、AI 解读和趋势上下文。</p></div>
+      <div class="spec-item full"><h3>数据字段/API</h3><p>GET /api/reports；字段：id、reportType、hospital、date、items[]、items.status。</p></div>
+      <div class="spec-item full"><h3>验收标准</h3><ul><li>列表只显示当前用户报告</li><li>无报告时出现空状态</li><li>所有按钮可跳转且不刷新整页</li><li>不出现预约、支付、用药入口</li></ul></div>
+    </div></article>
+  </section>
+
+  <section class="page-block" id="detail">
+    <div class="phone"><div class="phone-screen">
+      <div class="status"><span>9:41</span><span>5G 100%</span></div><div class="app-top"><button class="icon-btn">‹</button><h2>报告详情</h2><button class="icon-btn"></button></div>
+      <div class="content"><div class="card detail-summary"><div class="report-head"><div><strong>生化检验</strong><p class="muted">市第一人民医院 · 2026-03-28</p></div></div><p class="muted">王先生 · 70岁 · ID:123XXXX</p><div class="detail-meta"><div class="mini-stat"><strong>11</strong><span class="muted">总项目</span></div><div class="mini-stat"><strong style="color:var(--green)">8</strong><span class="muted">正常</span></div><div class="mini-stat"><strong style="color:var(--red)">3</strong><span class="muted">异常</span></div></div></div>
+      <div class="section-title"><h3>检验项目</h3><span>11 项</span></div>
+      <div class="card lab-item"><div class="lab-top"><strong>空腹血糖</strong><span class="badge red">偏高</span></div><div class="lab-value"><span>7.4 mmol/L</span><span>参考 3.9-6.1</span></div><div class="explain-box"><strong>糖代谢解释</strong><br>偏高可能提示糖代谢异常风险，需结合病史、复查结果和医生意见判断。</div></div>
+      <div class="card lab-item"><div class="lab-top"><strong>肌酐</strong><span class="badge red">偏高</span></div><div class="lab-value"><span>115 μmol/L</span><span>参考 57-111</span></div></div>
+      <div class="card lab-item"><div class="lab-top"><strong>总胆固醇</strong><span class="badge green">正常</span></div><div class="lab-value"><span>5.2 mmol/L</span><span>参考 0-5.2</span></div></div>
+      </div><div class="bottom-nav"><div>⌂<span>首页</span></div><div class="active">▤<span>报告</span></div><div>⌁<span>趋势</span></div><div>AI<span>助手</span></div><div>○<span>我的</span></div></div>
+    </div></div>
+    <article class="spec-card"><div class="spec-head"><span>页面 04</span><h2>报告详情页</h2></div><div class="spec-grid">
+      <div class="spec-item"><h3>页面目标</h3><p>展示某份报告的完整项目列表和每个指标的医学科普解释。</p></div><div class="spec-item"><h3>用户场景</h3><p>用户需要核对报告数据、查看异常项目和理解指标含义。</p></div>
+      <div class="spec-item"><h3>核心功能</h3><ul><li>报告基本信息</li><li>患者信息</li><li>项目数统计</li><li>项目状态标签</li><li>查看/收起解释</li></ul></div>
+      <div class="spec-item"><h3>交互规则</h3><ul><li>点击查看解释展开 explainLabItem</li><li>异常指标使用柔和红色</li><li>未收录指标显示通用解释</li></ul></div>
+      <div class="spec-item"><h3>前置条件</h3><p>从报告列表或其他入口设置 reportId；API 模式需有效 token。</p></div><div class="spec-item"><h3>后置结果</h3><p>用户理解单项指标，可继续进入趋势分析或 AI 解读。</p></div>
+      <div class="spec-item full"><h3>数据字段/API</h3><p>GET /api/reports/{report_id}；items 字段：name、value、unit、refLow、refHigh、refText、refSource、status。</p></div>
+      <div class="spec-item full"><h3>验收标准</h3><ul><li>详情数据与列表点击报告一致</li><li>每个项目显示值、单位、参考范围、来源和状态</li><li>解释可展开/收起</li><li>无字典项不报错</li></ul></div>
+    </div></article>
+  </section>
+
+  <section class="page-block" id="trend">
+    <div class="phone"><div class="phone-screen">
+      <div class="status"><span>9:41</span><span>5G 100%</span></div><div class="app-top"><button class="icon-btn">‹</button><h2>趋势分析</h2><button class="icon-btn">•••</button></div>
+      <div class="content"><div class="card metric-hero"><span class="badge blue">空腹血糖</span><div class="metric-value"><div><strong>7.4</strong> mmol/L<p class="muted">2026-03-28</p></div><div><span class="badge red">偏高</span><p class="muted">较上次 ↑ 0.8</p></div></div></div>
+      <div class="card chart-card"><div class="section-title"><h3>2025-12-05 - 2026-03-28</h3><span>参考 3.9-6.1</span></div><div class="chart-area"><svg viewBox="0 0 330 190"><rect x="48" y="78" width="238" height="62" rx="12" fill="#e8f8f1"/><path d="M35 142 C80 138 90 115 126 112 S166 94 194 84 S238 50 285 42" fill="none" stroke="#1f6feb" stroke-width="5"/><circle cx="35" cy="142" r="9" fill="#11a36a" stroke="#fff" stroke-width="4"/><circle cx="126" cy="112" r="9" fill="#11a36a" stroke="#fff" stroke-width="4"/><circle cx="194" cy="84" r="9" fill="#e5484d" stroke="#fff" stroke-width="4"/><circle cx="285" cy="42" r="9" fill="#e5484d" stroke="#fff" stroke-width="4"/></svg></div><div class="point-detail">已选中 03/28：7.4 mmol/L，偏高；较上一条记录上升 0.8，变化 12.1%。</div></div>
+      <div class="tab-row"><div class="active">名词解释</div><div>异常分析</div><div>历史记录</div></div><div class="note">空腹血糖用于反映空腹状态下血液葡萄糖水平，常用于糖代谢风险评估。</div>
+      </div><div class="bottom-nav"><div>⌂<span>首页</span></div><div>▤<span>报告</span></div><div class="active">⌁<span>趋势</span></div><div>AI<span>助手</span></div><div>○<span>我的</span></div></div>
+    </div></div>
+    <article class="spec-card"><div class="spec-head"><span>页面 05</span><h2>趋势分析页</h2></div><div class="spec-grid">
+      <div class="spec-item"><h3>页面目标</h3><p>基于历史报告展示某个检验项目的变化趋势和异常分析。</p></div><div class="spec-item"><h3>用户场景</h3><p>用户关注某个异常指标是否持续偏高、是否逐步升高或降低。</p></div>
+      <div class="spec-item"><h3>核心功能</h3><ul><li>指标选择</li><li>折线趋势图</li><li>参考范围背景</li><li>时间节点点击详情</li><li>名词解释/异常分析/历史记录 tabs</li></ul></div>
+      <div class="spec-item"><h3>交互规则</h3><ul><li>点击图表点显示日期、医院、值、状态和较上次变化</li><li>历史记录可进入报告详情</li><li>数据不足时显示提示，不误判趋势</li></ul></div>
+      <div class="spec-item"><h3>前置条件</h3><p>至少存在一份包含当前指标的报告；多点数据用于趋势判断。</p></div><div class="spec-item"><h3>后置结果</h3><p>用户获得指标历史变化认知，可跳转原报告核对数据。</p></div>
+      <div class="spec-item full"><h3>数据字段/API</h3><p>GET /api/reports 后前端聚合同名项目；字段：report.id、date、hospital、reportType、item.name、value、unit、refLow/refHigh、status。</p></div>
+      <div class="spec-item full"><h3>验收标准</h3><ul><li>单点数据不显示“逐步升高/降低”</li><li>上次数值为 0 时百分比显示“暂无”</li><li>节点点击区域适合移动端</li><li>tabs 内容真实切换</li></ul></div>
+    </div></article>
+  </section>
+
+  <section class="page-block" id="ai">
+    <div class="phone"><div class="phone-screen">
+      <div class="status"><span>9:41</span><span>5G 100%</span></div><div class="app-top"><button class="icon-btn">‹</button><h2>AI 健康助手</h2><button class="icon-btn"></button></div>
+      <div class="content"><div class="ai-tabs"><div>AI 解读</div><div class="active">AI 对话</div></div><div class="card ai-card"><strong>当前参考报告</strong><p class="muted">生化检验 · 市第一人民医院 · 2026-03-28</p><span class="badge red">异常 3 项</span></div>
+      <div class="chat"><div class="bubble ai">Hi，我是你的健康助手。可以问我报告里的指标含义，我会结合当前报告数据回答。</div><div class="bubble user">GLU 偏高是什么意思？</div><div class="bubble ai">根据当前报告，空腹血糖为 7.4 mmol/L，高于参考范围 3.9-6.1 mmol/L，属于偏高。可能提示糖代谢异常风险，建议结合复查和医生意见判断。<br><br><strong>AI 仅供健康科普参考，不构成诊断或治疗建议。</strong></div></div>
+      <div class="quick"><span>这份报告有什么异常？</span><span>我需要复查吗？</span><span>LDL 是什么意思？</span></div>
+      </div><div class="chat-input"><div>可以问我某个指标是什么意思...</div><button>发送</button></div><div class="bottom-nav"><div>⌂<span>首页</span></div><div>▤<span>报告</span></div><div>⌁<span>趋势</span></div><div class="active">AI<span>助手</span></div><div>○<span>我的</span></div></div>
+    </div></div>
+    <article class="spec-card"><div class="spec-head"><span>页面 06</span><h2>AI 健康助手页</h2></div><div class="spec-grid">
+      <div class="spec-item"><h3>页面目标</h3><p>提供报告结构化 AI 解读和基于当前报告的健康问答。</p></div><div class="spec-item"><h3>用户场景</h3><p>用户看不懂指标含义，希望用自然语言询问某项指标或整份报告。</p></div>
+      <div class="spec-item"><h3>核心功能</h3><ul><li>AI 解读/AI 对话模式</li><li>当前报告上下文卡片</li><li>快捷问题</li><li>聊天记录 localStorage 保存</li><li>AI 不可用 fallback 本地规则</li></ul></div>
+      <div class="spec-item"><h3>交互规则</h3><ul><li>发送问题优先调用后端 AI</li><li>失败则显示本地规则生成</li><li>涉及用药/诊断不直接给处方</li><li>所有 AI 输出包含免责声明</li></ul></div>
+      <div class="spec-item"><h3>前置条件</h3><p>存在当前报告；若无报告显示空状态并引导录入。</p></div><div class="spec-item"><h3>后置结果</h3><p>生成回答并保存聊天记录；回答标记 AI 生成或本地规则。</p></div>
+      <div class="spec-item full"><h3>数据字段/API</h3><p>POST /api/ai/interpret；POST /api/ai/chat；请求携带 report、question、messages。失败返回 ok:false、fallback:true、error。</p></div>
+      <div class="spec-item full"><h3>验收标准</h3><ul><li>AI 可用时显示 AI 生成</li><li>AI 不可用时 fallback 不崩溃</li><li>回答引用数值、单位和参考范围</li><li>必须出现“AI 仅供健康科普参考，不构成诊断或治疗建议”</li></ul></div>
+    </div></article>
+  </section>
+
+  <section class="page-block" id="profile">
+    <div class="phone"><div class="phone-screen">
+      <div class="status"><span>9:41</span><span>5G 100%</span></div><div class="app-top"><button class="icon-btn">‹</button><h2>我的</h2><button class="icon-btn"></button></div>
+      <div class="content"><div class="card profile-card"><div class="report-head"><div class="avatar">测</div><div><strong>测试用户</strong><p class="muted">test@example.com</p></div></div><button class="secondary">退出登录</button></div>
+      <div class="section-title"><h3>数据模式</h3><span>开发者工具</span></div><div class="card profile-card"><div class="mode-row"><span>当前模式</span><span class="badge blue">API 模式</span></div><div class="mode-row"><span>API 地址</span><span>127.0.0.1:8000</span></div><div class="mode-row"><span>后端状态</span><span class="badge green">正常</span></div><div class="mode-row"><span>AI 服务</span><span class="badge green">可用</span></div><div class="debug-actions"><button class="secondary">切换本地</button><button class="secondary">检测后端</button><button class="secondary">同步到后端</button><button class="secondary">拉取报告</button></div></div>
+      <div class="note">local 模式数据仅保存在浏览器；API 模式报告按 user_id 隔离。</div>
+      </div><div class="bottom-nav"><div>⌂<span>首页</span></div><div>▤<span>报告</span></div><div>⌁<span>趋势</span></div><div>AI<span>助手</span></div><div class="active">○<span>我的</span></div></div>
+    </div></div>
+    <article class="spec-card"><div class="spec-head"><span>页面 07</span><h2>Profile 我的页面</h2></div><div class="spec-grid">
+      <div class="spec-item"><h3>页面目标</h3><p>展示当前登录用户、数据模式、后端/AI 状态和开发者调试工具。</p></div><div class="spec-item"><h3>用户场景</h3><p>用户确认当前账号和数据来源；开发阶段检查 API/AI 状态或迁移本地数据。</p></div>
+      <div class="spec-item"><h3>核心功能</h3><ul><li>用户信息</li><li>退出登录</li><li>local/API 模式切换</li><li>检测后端/AI 服务</li><li>同步本地到后端</li><li>从后端拉取报告</li></ul></div>
+      <div class="spec-item"><h3>交互规则</h3><ul><li>退出登录清除 token/user</li><li>切换模式不自动清空数据</li><li>同步/拉取需要登录 API 账号</li><li>清空报告不回退 sampleReports</li></ul></div>
+      <div class="spec-item"><h3>前置条件</h3><p>Profile 可在 local 或 API 模式访问；API 同步工具需有效 token。</p></div><div class="spec-item"><h3>后置结果</h3><p>完成数据源切换、服务检测或数据迁移；用户可退出回到登录页。</p></div>
+      <div class="spec-item full"><h3>数据字段/API</h3><p>GET /api/health；GET /api/ai/health；GET /api/auth/me；POST /api/reports/import；GET /api/reports；localStorage keys：lab_data_mode、lab_auth_token、lab_auth_user。</p></div>
+      <div class="spec-item full"><h3>验收标准</h3><ul><li>显示当前用户邮箱</li><li>退出后 API 模式回到登录页</li><li>后端/AI 检测结果清晰</li><li>不展示预约、支付、用药模块</li></ul></div>
+    </div></article>
+  </section>
+
+</main>
+</body>
+</html>
