@@ -17,10 +17,24 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(row["name"] == column for row in rows)
+
+
 def init_db() -> None:
     with get_connection() as conn:
         conn.executescript(
             """
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                name TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS reports (
                 id TEXT PRIMARY KEY,
                 patient_name TEXT,
@@ -49,5 +63,10 @@ def init_db() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_report_items_report_id
             ON report_items(report_id);
+
             """
         )
+        if not _column_exists(conn, "reports", "user_id"):
+            conn.execute("ALTER TABLE reports ADD COLUMN user_id TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_reports_user_id ON reports(user_id)")
+        conn.commit()

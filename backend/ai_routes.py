@@ -10,6 +10,7 @@ from .ai_service import (
     generate_ai_chat_reply,
     generate_ai_interpretation,
     get_ai_config,
+    log_ai_error,
 )
 from .schemas import Report
 
@@ -35,43 +36,31 @@ class ChatRequest(BaseModel):
 @router.get("/health")
 def ai_health() -> Dict[str, Any]:
     config = get_ai_config()
-    if not config["hasKey"]:
-        return {
-            "ok": False,
-            "configured": False,
-            "provider": config["provider"],
-            "model": config["model"],
-            "baseUrlConfigured": config["baseUrlConfigured"],
-            "hasKey": False,
-            "message": "AI_API_KEY is not configured",
-        }
-    if not config["model"]:
-        return {
-            "ok": False,
-            "configured": False,
-            "provider": config["provider"],
-            "model": "",
-            "baseUrlConfigured": config["baseUrlConfigured"],
-            "hasKey": True,
-            "message": "AI_MODEL is not configured",
-        }
-    return {
-        "ok": True,
-        "configured": True,
+    response = {
+        "ok": bool(config["configured"]),
+        "configured": bool(config["configured"]),
         "provider": config["provider"],
+        "api_base_url": config["api_base_url"],
         "model": config["model"],
+        "key_present": bool(config["key_present"]),
         "baseUrlConfigured": config["baseUrlConfigured"],
-        "hasKey": True,
+        "hasKey": bool(config["key_present"]),
     }
+    if not config["key_present"]:
+        response["message"] = "AI_API_KEY is not configured"
+    elif not config["model"]:
+        response["message"] = "AI_MODEL is not configured"
+    return response
 
 
 @router.post("/interpret")
 async def interpret(payload: InterpretRequest) -> Dict[str, Any]:
     try:
         result = await generate_ai_interpretation(payload.report.model_dump())
-        return {"ok": True, "mode": "ai", "result": result}
+        return {"ok": True, "mode": "ai", "fallback": False, "result": result}
     except AiServiceError as error:
-        return {"ok": False, "mode": "fallback", "error": str(error)}
+        log_ai_error(error)
+        return {"ok": False, "mode": "fallback", "fallback": True, "error": str(error)[:200]}
 
 
 @router.post("/chat")
@@ -82,6 +71,7 @@ async def chat(payload: ChatRequest) -> Dict[str, Any]:
             payload.question,
             [message.model_dump() for message in payload.messages],
         )
-        return {"ok": True, "mode": "ai", "reply": reply}
+        return {"ok": True, "mode": "ai", "fallback": False, "reply": reply}
     except AiServiceError as error:
-        return {"ok": False, "mode": "fallback", "error": str(error)}
+        log_ai_error(error)
+        return {"ok": False, "mode": "fallback", "fallback": True, "error": str(error)[:200]}

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import urllib.error
 import urllib.request
@@ -9,6 +10,7 @@ from typing import Any, Dict, List
 
 
 SAFETY_DISCLAIMER = "内容仅供健康科普和报告理解参考，不能替代医生诊断。"
+logger = logging.getLogger("medical_reports.ai")
 
 
 class AiServiceError(Exception):
@@ -20,14 +22,29 @@ def get_ai_config() -> Dict[str, Any]:
     base_url_raw = os.getenv("AI_API_BASE_URL", "").strip()
     base_url = base_url_raw or "https://api.openai.com/v1"
     model = os.getenv("AI_MODEL", "").strip()
+    key_present = bool(api_key)
     return {
         "configured": bool(api_key and model),
-        "hasKey": bool(api_key),
+        "hasKey": key_present,
+        "key_present": key_present,
         "baseUrlConfigured": bool(base_url_raw),
         "model": model,
         "provider": "custom",
         "baseUrl": base_url,
+        "api_base_url": base_url,
     }
+
+
+def log_ai_error(error: Exception) -> None:
+    config = get_ai_config()
+    logger.warning(
+        "AI provider error type=%s message=%s api_base_url=%s model=%s key_present=%s",
+        type(error).__name__,
+        str(error)[:200],
+        config["api_base_url"],
+        config["model"],
+        bool(config["key_present"]),
+    )
 
 
 def _chat_completions_url(base_url: str) -> str:
