@@ -535,3 +535,90 @@ python3 -m py_compile backend/main.py backend/database.py backend/models.py back
 - Phase 2：OCR / 扫描件识别
 - Phase 3：登录、隐私、安全、部署
 - Phase 4：RAG 医学知识库和更完整的医疗安全审计
+
+## v1.1 登录验证与用户隔离
+
+v1.0 旧 SQLite 数据库会在首次启动 v1.1 后端时自动为 reports 表补充 user_id 字段，不会删除已有报告数据。
+
+本版本加入后端真实注册、登录和 JWT 鉴权。API 模式下，报告数据按登录用户隔离；local 模式仍保留为离线演示模式，数据只保存在当前浏览器 localStorage，不会同步到账号。
+
+### 认证相关环境变量
+
+不要把真实密钥写进代码或提交到 GitHub。可以在启动后端前设置：
+
+```bash
+export JWT_SECRET_KEY="change_this_in_production"
+export JWT_ALGORITHM="HS256"
+export ACCESS_TOKEN_EXPIRE_MINUTES="1440"
+```
+
+`.env.example` 已包含占位配置。生产环境必须替换 `JWT_SECRET_KEY`，不要使用示例值。
+
+### 后端认证 API
+
+- `POST /api/auth/register`：注册用户，成功后返回 token 和 user。
+- `POST /api/auth/login`：登录，成功后返回 token 和 user。
+- `GET /api/auth/me`：读取当前用户，需要 `Authorization: Bearer <TOKEN>`。
+- `POST /api/auth/logout`：返回 `{ "ok": true }`，前端负责删除 token。
+
+### 报告 API 鉴权
+
+以下接口在 API 模式下都需要登录，并且只读写当前用户自己的报告：
+
+- `GET /api/reports`
+- `GET /api/reports/{report_id}`
+- `POST /api/reports`
+- `PUT /api/reports/{report_id}`
+- `DELETE /api/reports/{report_id}`
+- `DELETE /api/reports`
+- `POST /api/reports/import`
+
+前端会把 `lab_auth_token` 中的 token 自动加到 API 请求头。token 失效或接口返回 401 时，前端会清除登录状态并回到登录页。
+
+### 前端登录行为
+
+- API 模式未登录时，会显示登录/注册页面。
+- 登录或注册成功后进入首页。
+- Profile 页面显示当前登录用户，并提供退出登录按钮。
+- local 模式不强制登录，可用于离线作品集演示。
+- 切换到 API 模式但尚未登录时，会先进入登录页。
+
+### curl 验证命令
+
+注册：
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"12345678","name":"测试用户"}'
+```
+
+登录：
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"12345678"}'
+```
+
+获取当前用户：
+
+```bash
+curl http://127.0.0.1:8000/api/auth/me \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+带 token 获取报告：
+
+```bash
+curl http://127.0.0.1:8000/api/reports \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+### 安全说明
+
+- 密码使用 passlib/bcrypt 哈希后保存，不存明文密码。
+- JWT secret 从环境变量读取，不应提交真实值。
+- 当前没有复杂 RBAC、审计、密码重置和第三方登录，不适合直接作为真实医疗生产系统。
+- 医疗解释仍仅供健康科普和报告理解参考，不能替代医生诊断。
+

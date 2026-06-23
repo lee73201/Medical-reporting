@@ -4,6 +4,8 @@ const REPORTS_KEY = 'lab_reports_v2';
 const CHAT_KEY = 'lab_chat_v2';
 const SELECTED_REPORT_KEY = 'lab_selected_report_id';
 const DATA_MODE_KEY = 'lab_data_mode';
+const AUTH_TOKEN_KEY = 'lab_auth_token';
+const AUTH_USER_KEY = 'lab_auth_user';
 const appConfig = {
   dataMode: getStoredDataMode(),
   apiBaseUrl: 'http://127.0.0.1:8000'
@@ -14,7 +16,8 @@ const appState = {
   loading: false,
   error: null,
   apiHealth: 'unchecked',
-  aiHealth: null
+  aiHealth: null,
+  authUser: getStoredAuthUser()
 };
 const patient = { name: '王先生', age: 70, patientId: '123XXXX' };
 let selectedReportId = getStoredSelectedReportId();
@@ -226,15 +229,7 @@ const reportService = {
     return this.saveAllReports(reports);
   },
   async requestApi(path, options = {}) {
-    const response = await fetch(`${appConfig.apiBaseUrl}${path}`, {
-      ...options,
-      headers: {
-        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-        ...(options.headers || {})
-      }
-    });
-    if (!response.ok) throw new Error(`API ${response.status}: ${await response.text()}`);
-    return response.status === 204 ? null : response.json();
+    return apiFetch(path, options);
   },
   async listReportsAsync() {
     if (appConfig.dataMode === 'local') return this.listReports();
@@ -275,6 +270,61 @@ const reportService = {
     return this.listReportsAsync();
   }
 };
+
+function getStoredAuthUser() { return readJson(AUTH_USER_KEY, null); }
+function getAuthToken() { try { return localStorage.getItem(AUTH_TOKEN_KEY) || ''; } catch { return ''; } }
+function setAuthSession(token, user) {
+  localStorage.setItem(AUTH_TOKEN_KEY, token || '');
+  localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user || null));
+  appState.authUser = user || null;
+}
+function clearAuthSession() {
+  try { localStorage.removeItem(AUTH_TOKEN_KEY); localStorage.removeItem(AUTH_USER_KEY); } catch {}
+  appState.authUser = null;
+}
+const authService = {
+  async login(email, password) {
+    const data = await apiFetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }, { skipAuth: true });
+    setAuthSession(data.access_token, data.user);
+    return data.user;
+  },
+  async register(name, email, password) {
+    const data = await apiFetch('/api/auth/register', { method: 'POST', body: JSON.stringify({ name, email, password }) }, { skipAuth: true });
+    setAuthSession(data.access_token, data.user);
+    return data.user;
+  },
+  logout() {
+    clearAuthSession();
+    appState.reports = [];
+    appState.reportsLoaded = false;
+    selectedReportId = '';
+    selectedAiReportId = '';
+    expandedAiReportId = '';
+    clearStoredSelectedReportId();
+  },
+  getCurrentUser() { return appState.authUser || getStoredAuthUser(); },
+  isAuthenticated() { return Boolean(getAuthToken()); }
+};
+async function apiFetch(path, options = {}, authOptions = {}) {
+  const headers = {
+    ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+    ...(options.headers || {})
+  };
+  const token = getAuthToken();
+  if (!authOptions.skipAuth && token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(`${appConfig.apiBaseUrl}${path}`, { ...options, headers });
+  if (response.status === 401 && !authOptions.skipAuth) {
+    authService.logout();
+    if (appConfig.dataMode === 'api') showScreen('auth');
+    throw new Error('登录已失效，请重新登录');
+  }
+  if (!response.ok) throw new Error(`API ${response.status}: ${await response.text()}`);
+  return response.status === 204 ? null : response.json();
+}
+function authHeaders(headers = {}) {
+  const token = getAuthToken();
+  return token ? { ...headers, Authorization: `Bearer ${token}` } : headers;
+}
 function getStoredSelectedReportId() { try { return localStorage.getItem(SELECTED_REPORT_KEY) || ''; } catch { return ''; } }
 function setStoredSelectedReportId(id) { try { localStorage.setItem(SELECTED_REPORT_KEY, id || ''); } catch {} return id || ''; }
 function clearStoredSelectedReportId() { return setStoredSelectedReportId(''); }
@@ -296,6 +346,11 @@ async function loadReportsToState() {
   appState.loading = true;
   appState.error = null;
   try {
+    if (appConfig.dataMode === 'api' && !authService.isAuthenticated()) {
+      appState.reports = [];
+      appState.reportsLoaded = false;
+      return [];
+    }
     appState.reports = appConfig.dataMode === 'api'
       ? normalizeReports(await reportService.listReportsAsync())
       : reportService.listReports();
@@ -527,7 +582,7 @@ async function callAiInterpretApi(report) {
   const normalizedReport = normalizeReport(report);
   const data = await fetchJsonWithTimeout(`${appConfig.apiBaseUrl}/api/ai/interpret`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ report: normalizedReport })
   });
   return data?.ok && data.result ? data.result : null;
@@ -536,7 +591,7 @@ async function callAiChatApi(question, report, chatHistory) {
   if (!report) return null;
   const data = await fetchJsonWithTimeout(`${appConfig.apiBaseUrl}/api/ai/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({
       report: normalizeReport(report),
       question,
@@ -582,16 +637,22 @@ function formatDateTime(date) {
 }
 
 async function showScreen(rawId) {
-  const id = rawId === 'upload' ? 'upload' : rawId;
+  let id = rawId === 'upload' ? 'upload' : rawId;
+  if (appConfig.dataMode === 'api' && !authService.isAuthenticated() && id !== 'auth') id = 'auth';
   screens.forEach(s => { s.classList.toggle('active', s.id === id); if (s.id === id) s.scrollTop = 0; });
+  document.querySelector('.bottom-nav')?.classList.toggle('auth-hidden', id === 'auth');
   navButtons.forEach(btn => {
     const target = btn.dataset.go;
     const active = target === id || (target === 'reports' && ['upload','report-detail'].includes(id)) || (target === 'ai-insights' && id === 'ai-insights');
     btn.classList.toggle('active', active);
   });
-  if (appConfig.dataMode === 'api' && !appState.reportsLoaded && !['upload'].includes(id)) {
+  if (appConfig.dataMode === 'api' && !appState.reportsLoaded && !['upload', 'auth'].includes(id)) {
     renderAppStatus(id, 'loading');
     await loadReportsToState();
+    if (!authService.isAuthenticated()) {
+      showScreen('auth');
+      return;
+    }
   }
   render(id);
 }
@@ -612,6 +673,69 @@ document.addEventListener('click', event => {
   showScreen(trigger.dataset.go);
 });
 
+
+function renderAuth(mode = 'login') {
+  const root = document.querySelector('#auth');
+  const isRegister = mode === 'register';
+  root.innerHTML = `<section class="auth-screen">
+    <div class="auth-brand"><span class="auth-logo">AI</span><h1>医检报告通</h1><p>登录后在 API 模式下同步并隔离管理你的检验报告。</p></div>
+    <article class="card auth-card">
+      <div class="auth-tabs"><button class="${!isRegister ? 'active' : ''}" data-auth-mode="login">登录</button><button class="${isRegister ? 'active' : ''}" data-auth-mode="register">注册</button></div>
+      <form id="auth-form" data-mode="${isRegister ? 'register' : 'login'}">
+        ${isRegister ? '<label>姓名<input name="name" autocomplete="name" placeholder="测试用户"></label>' : ''}
+        <label>邮箱<input name="email" type="email" autocomplete="email" placeholder="test@example.com" required></label>
+        <label>密码<input name="password" type="password" autocomplete="current-password" placeholder="至少 8 位" required></label>
+        ${isRegister ? '<label>确认密码<input name="confirmPassword" type="password" autocomplete="new-password" placeholder="再次输入密码" required></label>' : ''}
+        <button class="primary-btn" type="submit">${isRegister ? '注册并登录' : '登录'}</button>
+      </form>
+      <div class="form-message" id="auth-message" aria-live="polite"></div>
+      <button class="outline-btn auth-local-btn" type="button" id="auth-local-mode">使用本地离线演示模式</button>
+      <p class="auth-note">local 模式的数据只保存在当前浏览器；API 模式需要登录后写入后端 SQLite。</p>
+    </article>
+  </section>`;
+  bindAuthEvents(root);
+}
+function bindAuthEvents(root) {
+  root.querySelectorAll('[data-auth-mode]').forEach(button => {
+    button.addEventListener('click', () => renderAuth(button.dataset.authMode));
+  });
+  root.querySelector('#auth-local-mode')?.addEventListener('click', async () => {
+    setDataMode('local');
+    await loadReportsToState();
+    showScreen('overview');
+  });
+  root.querySelector('#auth-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const message = root.querySelector('#auth-message');
+    const mode = form.dataset.mode;
+    const email = form.email.value.trim();
+    const password = form.password.value;
+    try {
+      if (mode === 'register') {
+        const name = form.name.value.trim();
+        const confirmPassword = form.confirmPassword.value;
+        if (password.length < 8) throw new Error('密码至少需要 8 位');
+        if (password !== confirmPassword) throw new Error('两次输入的密码不一致');
+        await authService.register(name, email, password);
+      } else {
+        await authService.login(email, password);
+      }
+      setDataMode('api');
+      await loadReportsToState();
+      showScreen('overview');
+    } catch (error) {
+      message.textContent = normalizeAuthError(error.message);
+      message.className = 'form-message error';
+    }
+  });
+}
+function normalizeAuthError(message = '') {
+  if (message.includes('409')) return '邮箱已存在，请直接登录或换一个邮箱。';
+  if (message.includes('401')) return '邮箱或密码错误。';
+  if (message.includes('Failed to fetch')) return '后端不可用，请确认 FastAPI 已启动。';
+  return message || '操作失败，请稍后重试。';
+}
 function topBar(title, back = '', right = '') {
   return `<header class="app-top"><button class="icon-btn" ${back ? `data-go="${back}"` : ''}>${back ? '<svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>' : ''}</button><h1>${title}</h1><button class="icon-btn">${right}</button></header>`;
 }
@@ -619,10 +743,11 @@ function renderEmptyState(message, actionText = '', actionTarget = '') {
   return `<article class="card empty-state"><p>${esc(message)}</p>${actionText ? `<button class="primary-btn" data-go="${esc(actionTarget)}">${esc(actionText)}</button>` : ''}</article>`;
 }
 function render(id) {
-  if (appConfig.dataMode === 'api' && appState.error && !['upload', 'profile'].includes(id)) {
+  if (appConfig.dataMode === 'api' && appState.error && !['upload', 'profile', 'auth'].includes(id)) {
     renderAppStatus(id, 'error');
     return;
   }
+  if (id === 'auth') renderAuth();
   if (id === 'overview') renderOverview();
   if (id === 'upload') renderUpload();
   if (id === 'reports') renderReports();
@@ -1507,7 +1632,9 @@ function renderAiInterpretation(interpretation) {
 }
 function renderProfile() {
   const root = document.querySelector('#profile');
-  root.innerHTML = `${topBar('我的', 'overview')}<article class="card profile-empty">个人中心模块待接入账号系统。</article>${renderDevTools()}`;
+  const user = authService.getCurrentUser();
+  const userCard = `<article class="card profile-user-card"><h2>${user ? esc(user.name || user.email) : '离线演示模式'}</h2><p>${user ? esc(user.email) : '当前未登录，local 模式数据仅保存在当前浏览器。'}</p><div class="profile-user-actions">${user ? '<button class="outline-btn danger-soft" type="button" id="logout-btn">退出登录</button>' : '<button class="outline-btn" type="button" data-go="auth">登录 / 注册</button>'}</div></article>`;
+  root.innerHTML = `${topBar('我的', 'overview')}${userCard}${renderDevTools()}`;
   bindProfileEvents(root);
 }
 function renderDevTools() {
@@ -1555,6 +1682,10 @@ function renderDevTools() {
   </article>`;
 }
 function bindProfileEvents(root) {
+  root.querySelector('#logout-btn')?.addEventListener('click', () => {
+    authService.logout();
+    showScreen('auth');
+  });
   root.querySelector('#clear-reports')?.addEventListener('click', async () => {
     const sourceText = appConfig.dataMode === 'api' ? '后端报告数据' : '本地报告数据';
     if (!confirm(`确认清空${sourceText}？该操作不会恢复示例报告。`)) return;
@@ -1608,13 +1739,17 @@ async function checkApiHealth() {
   }
 }
 async function checkAiHealth() {
-  const result = await fetchJsonWithTimeout(`${appConfig.apiBaseUrl}/api/ai/health`, {}, 8000);
+  const result = await fetchJsonWithTimeout(`${appConfig.apiBaseUrl}/api/ai/health`, { headers: authHeaders() }, 8000);
   appState.aiHealth = result || { ok: false, configured: false, message: 'AI 后端接口不可访问' };
   renderProfile();
   showProfileMessage(appState.aiHealth.ok ? 'AI 服务可用' : (appState.aiHealth.message || 'AI 服务暂不可用'), appState.aiHealth.ok ? 'success' : 'error');
 }
 async function switchToApiMode() {
   setDataMode('api');
+  if (!authService.isAuthenticated()) {
+    showScreen('auth');
+    return;
+  }
   renderProfile();
   showProfileMessage('正在切换到 API 模式…', 'info');
   await loadReportsToState();
@@ -1674,6 +1809,7 @@ function importReportsJson(file) {
 }
 async function syncLocalReportsToApi() {
   try {
+    if (!authService.isAuthenticated()) throw new Error('请先登录 API 账号后再同步');
     const reports = reportService.exportReports();
     const result = await reportService.requestApi('/api/reports/import', { method: 'POST', body: JSON.stringify(reports) });
     showProfileMessage(`已同步 ${result.imported ?? reports.length} 份本地报告到后端`, 'success');
@@ -1683,6 +1819,7 @@ async function syncLocalReportsToApi() {
 }
 async function pullApiReportsToLocal() {
   try {
+    if (!authService.isAuthenticated()) throw new Error('请先登录 API 账号后再拉取');
     const reports = normalizeReports(await reportService.requestApi('/api/reports'));
     if (!confirm(`确认从后端拉取 ${reports.length} 份报告并覆盖本地数据？`)) return;
     reportService.importReports(reports);
@@ -1803,7 +1940,7 @@ function formatValue(i) { return `${i.value} ${i.unit || ''}`.trim(); }
 function formatRange(i) { return `${i.refLow}-${i.refHigh} ${i.unit || ''}`.trim(); }
 function esc(v) { return String(v ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); }
 function readJson(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } }
-window.appConfig=appConfig; window.appState=appState; window.reportService=reportService; window.chatService=chatService; window.setDataMode=setDataMode; window.loadReportsToState=loadReportsToState; window.refreshReportsAndRender=refreshReportsAndRender; window.checkApiHealth=checkApiHealth; window.switchToApiMode=switchToApiMode; window.switchToLocalMode=switchToLocalMode; window.apiHealthText=apiHealthText; window.labReferenceDictionary=labReferenceDictionary; window.medicalItemDictionary=medicalItemDictionary; window.normalizeReport=normalizeReport; window.normalizeReports=normalizeReports; window.normalizeLabItemName=normalizeLabItemName; window.getDefaultReferenceRange=getDefaultReferenceRange; window.getMedicalItemInfo=getMedicalItemInfo; window.explainLabItem=explainLabItem; window.getReports=getReports; window.saveReports=saveReports; window.addReport=addReport; window.calculateItemStatus=calculateItemStatus; window.getLatestReport=getLatestReport; window.getAbnormalItems=getAbnormalItems; window.getOverviewStats=getOverviewStats; window.getTrendData=getTrendData; window.trendStatus=trendStatus; window.statusText=statusText; window.formatValue=formatValue; window.formatRange=formatRange; window.generateAiInterpretation=generateAiInterpretation; window.aiInterpretationToText=aiInterpretationToText; window.generateAiInterpretationText=generateAiInterpretationText; window.generateMockChatReply=generateMockChatReply; window.getCurrentChatReport=getCurrentChatReport; window.getChatHistory=getChatHistory; window.saveChatHistory=saveChatHistory; window.clearChatHistory=clearChatHistory; window.addChatMessage=addChatMessage; window.callAiChatApi=callAiChatApi; window.findMatchedLabItem=findMatchedLabItem; window.buildReportSummaryReply=buildReportSummaryReply; window.buildItemExplanationReply=buildItemExplanationReply; window.isMedicalAdviceQuestion=isMedicalAdviceQuestion; window.renderChatPanel=renderChatPanel; window.renderChatContextCard=renderChatContextCard; window.renderChatMessages=renderChatMessages; window.renderQuickQuestions=renderQuickQuestions; window.loadPdfJsIfNeeded=loadPdfJsIfNeeded; window.extractTextFromPdfFile=extractTextFromPdfFile; window.groupTextItemsIntoLines=groupTextItemsIntoLines; window.normalizePdfText=normalizePdfText; window.parsePdfReportText=parsePdfReportText; window.parseReportMetaFromText=parseReportMetaFromText; window.parseLabItemsFromText=parseLabItemsFromText; window.parseLabLine=parseLabLine; window.parsePdfReferenceRange=parsePdfReferenceRange; window.normalizeParsedUnit=normalizeParsedUnit; window.buildReportFromParsedPdf=buildReportFromParsedPdf; window.calculatePdfParseConfidence=calculatePdfParseConfidence; window.pdfParserTestCases=pdfParserTestCases; window.runPdfParserTests=runPdfParserTests; window.renderPdfStatus=renderPdfStatus; window.renderPdfError=renderPdfError; window.renderPdfPreview=renderPdfPreview; window.renderParseDebugDetails=renderParseDebugDetails; window.collectParsedPdfPreview=collectParsedPdfPreview; window.handlePastedTextParse=handlePastedTextParse; window.renderOverview=renderOverview; window.renderReports=renderReports; window.renderTrends=renderTrends; window.renderAi=renderAi; window.renderProfile=renderProfile; window.renderUpload=renderUpload; window.bindUploadEvents=bindUploadEvents; window.createEmptyLabItemForm=createEmptyLabItemForm; window.collectUploadFormData=collectUploadFormData; window.validateUploadForm=validateUploadForm; window.saveUploadedReport=saveUploadedReport; window.renderReportDetail=renderReportDetail; window.renderLabItemCard=renderLabItemCard; window.bindReportDetailEvents=bindReportDetailEvents; window.renderExplanationPanel=renderExplanationPanel; window.renderAiInsightCards=renderAiInsightCards; window.renderAiReportCard=renderAiReportCard; window.renderAiInterpretation=renderAiInterpretation; window.renderDevTools=renderDevTools; window.getReportsCount=getReportsCount; window.getChatCount=getChatCount; window.resetReportsToSample=resetReportsToSample; window.clearReportsData=clearReportsData; window.exportReportsJson=exportReportsJson; window.importReportsJson=importReportsJson; window.syncLocalReportsToApi=syncLocalReportsToApi; window.pullApiReportsToLocal=pullApiReportsToLocal; window.refreshAfterDataChange=refreshAfterDataChange;
+window.appConfig=appConfig; window.appState=appState; window.authService=authService; window.apiFetch=apiFetch; window.reportService=reportService; window.chatService=chatService; window.setDataMode=setDataMode; window.loadReportsToState=loadReportsToState; window.refreshReportsAndRender=refreshReportsAndRender; window.checkApiHealth=checkApiHealth; window.switchToApiMode=switchToApiMode; window.switchToLocalMode=switchToLocalMode; window.apiHealthText=apiHealthText; window.labReferenceDictionary=labReferenceDictionary; window.medicalItemDictionary=medicalItemDictionary; window.normalizeReport=normalizeReport; window.normalizeReports=normalizeReports; window.normalizeLabItemName=normalizeLabItemName; window.getDefaultReferenceRange=getDefaultReferenceRange; window.getMedicalItemInfo=getMedicalItemInfo; window.explainLabItem=explainLabItem; window.getReports=getReports; window.saveReports=saveReports; window.addReport=addReport; window.calculateItemStatus=calculateItemStatus; window.getLatestReport=getLatestReport; window.getAbnormalItems=getAbnormalItems; window.getOverviewStats=getOverviewStats; window.getTrendData=getTrendData; window.trendStatus=trendStatus; window.statusText=statusText; window.formatValue=formatValue; window.formatRange=formatRange; window.generateAiInterpretation=generateAiInterpretation; window.aiInterpretationToText=aiInterpretationToText; window.generateAiInterpretationText=generateAiInterpretationText; window.generateMockChatReply=generateMockChatReply; window.getCurrentChatReport=getCurrentChatReport; window.getChatHistory=getChatHistory; window.saveChatHistory=saveChatHistory; window.clearChatHistory=clearChatHistory; window.addChatMessage=addChatMessage; window.callAiChatApi=callAiChatApi; window.findMatchedLabItem=findMatchedLabItem; window.buildReportSummaryReply=buildReportSummaryReply; window.buildItemExplanationReply=buildItemExplanationReply; window.isMedicalAdviceQuestion=isMedicalAdviceQuestion; window.renderChatPanel=renderChatPanel; window.renderChatContextCard=renderChatContextCard; window.renderChatMessages=renderChatMessages; window.renderQuickQuestions=renderQuickQuestions; window.loadPdfJsIfNeeded=loadPdfJsIfNeeded; window.extractTextFromPdfFile=extractTextFromPdfFile; window.groupTextItemsIntoLines=groupTextItemsIntoLines; window.normalizePdfText=normalizePdfText; window.parsePdfReportText=parsePdfReportText; window.parseReportMetaFromText=parseReportMetaFromText; window.parseLabItemsFromText=parseLabItemsFromText; window.parseLabLine=parseLabLine; window.parsePdfReferenceRange=parsePdfReferenceRange; window.normalizeParsedUnit=normalizeParsedUnit; window.buildReportFromParsedPdf=buildReportFromParsedPdf; window.calculatePdfParseConfidence=calculatePdfParseConfidence; window.pdfParserTestCases=pdfParserTestCases; window.runPdfParserTests=runPdfParserTests; window.renderPdfStatus=renderPdfStatus; window.renderPdfError=renderPdfError; window.renderPdfPreview=renderPdfPreview; window.renderParseDebugDetails=renderParseDebugDetails; window.collectParsedPdfPreview=collectParsedPdfPreview; window.handlePastedTextParse=handlePastedTextParse; window.renderAuth=renderAuth; window.renderOverview=renderOverview; window.renderReports=renderReports; window.renderTrends=renderTrends; window.renderAi=renderAi; window.renderProfile=renderProfile; window.renderUpload=renderUpload; window.bindUploadEvents=bindUploadEvents; window.createEmptyLabItemForm=createEmptyLabItemForm; window.collectUploadFormData=collectUploadFormData; window.validateUploadForm=validateUploadForm; window.saveUploadedReport=saveUploadedReport; window.renderReportDetail=renderReportDetail; window.renderLabItemCard=renderLabItemCard; window.bindReportDetailEvents=bindReportDetailEvents; window.renderExplanationPanel=renderExplanationPanel; window.renderAiInsightCards=renderAiInsightCards; window.renderAiReportCard=renderAiReportCard; window.renderAiInterpretation=renderAiInterpretation; window.renderDevTools=renderDevTools; window.getReportsCount=getReportsCount; window.getChatCount=getChatCount; window.resetReportsToSample=resetReportsToSample; window.clearReportsData=clearReportsData; window.exportReportsJson=exportReportsJson; window.importReportsJson=importReportsJson; window.syncLocalReportsToApi=syncLocalReportsToApi; window.pullApiReportsToLocal=pullApiReportsToLocal; window.refreshAfterDataChange=refreshAfterDataChange;
 window.aiInterpretationState=aiInterpretationState; window.fetchJsonWithTimeout=fetchJsonWithTimeout; window.callAiInterpretApi=callAiInterpretApi; window.requestAiInterpretation=requestAiInterpretation; window.checkAiHealth=checkAiHealth;
 window.renderOverviewItemBreakdown=renderOverviewItemBreakdown; window.bindOverviewStatsEvents=bindOverviewStatsEvents; window.renderTrendPointDetail=renderTrendPointDetail; window.renderTrendTabContent=renderTrendTabContent; window.renderTrendExplanation=renderTrendExplanation; window.analyzeTrendAbnormality=analyzeTrendAbnormality; window.renderTrendAbnormalAnalysis=renderTrendAbnormalAnalysis; window.renderTrendHistory=renderTrendHistory; window.trendPointKey=trendPointKey;
 showScreen('overview');
