@@ -224,3 +224,237 @@ test('one-point and zero-baseline trends never present an Infinity percentage', 
   run("render('trends')");
   assert.doesNotMatch(roots.get('trends').innerHTML, /Infinity|NaN/);
 });
+
+test('editing local data preserves the ID/patient and recalculates derived pages', async () => {
+  const { app } = harness();
+  const original = fixture(app);
+  app.reportService.saveAllReports([original]);
+  app.aiInterpretationState[original.id] = { source: 'ai', result: { summary: '旧 AI 解读' } };
+  const updated = JSON.parse(JSON.stringify(original));
+  updated.items[0].value = 5.4;
+  updated.hospital = '修正后的测试医院';
+  updated.patient.name = '不应覆盖患者';
+  updated.id = '不应创建新报告';
+  const saved = await app.saveEditedReport(updated, { report: original, mode: 'local' });
+  assert.equal(saved.id, original.id);
+  assert.equal(saved.patient.name, original.patient.name);
+  assert.equal(saved.items[0].status, 'normal');
+  assert.equal(app.getReports().length, 1);
+  assert.equal(app.getOverviewStats().abnormal, 0);
+  assert.equal(app.getTrendData('空腹血糖')[0].value, 5.4);
+  assert.equal(app.aiInterpretationState[original.id].invalidated, true);
+  const html = app.renderAiReportCard(saved, { expanded: true });
+  assert.match(html, /旧 AI 解读已失效/);
+  assert.doesNotMatch(html, /旧 AI 解读<|7\.4 mmol/);
+  assert.match(app.generateMockChatReply('GLU是什么意思', saved), /5.4/);
+});
+
+test('API editing uses PUT, updates the cache, and keeps local storage separate', async () => {
+  const { app, context, storage } = harness();
+  const localBefore = storage.get('lab_reports_v2');
+  const original = fixture(app);
+  app.setDataMode('api');
+  app.appState.reports = [original];
+  app.appState.reportsLoaded = true;
+  let request;
+  context.fetch = async (url, options) => {
+    request = { url, method: options.method, body: JSON.parse(options.body) };
+    return { ok: true, status: 200, json: async () => request.body };
+  };
+  const updated = JSON.parse(JSON.stringify(original));
+  updated.items[0].value = 4.8;
+  await app.saveEditedReport(updated, { report: original, mode: 'api' });
+  assert.equal(request.method, 'PUT');
+  assert.ok(request.url.endsWith('/api/reports/synthetic-test'));
+  assert.equal(app.getReports()[0].items[0].value, 4.8);
+  assert.equal(app.getReports()[0].items[0].status, 'normal');
+  assert.equal(storage.get('lab_reports_v2'), localBefore);
+});
+
+test('failed API edits do not mutate the report or invalidate the old interpretation', async () => {
+  const { app, context } = harness();
+  const original = fixture(app);
+  app.setDataMode('api');
+  app.appState.reports = [original];
+  app.aiInterpretationState[original.id] = { source: 'ai', result: { summary: '旧解读' } };
+  context.fetch = async () => ({ ok: false, status: 500 });
+  const updated = JSON.parse(JSON.stringify(original));
+  updated.hospital = '新医院';
+  await assert.rejects(app.saveEditedReport(updated, { report: original, mode: 'api' }));
+  assert.equal(app.getReports()[0].hospital, original.hospital);
+  assert.equal(app.aiInterpretationState[original.id].source, 'ai');
+});
+
+test('editing an unchanged report is a no-op and does not discard an AI result', async () => {
+  const { app } = harness();
+  const original = fixture(app);
+  app.reportService.saveAllReports([original]);
+  app.aiInterpretationState[original.id] = { source: 'ai' };
+  await app.saveEditedReport(original, { report: original, mode: 'local' });
+  assert.equal(app.aiInterpretationState[original.id].source, 'ai');
+});
+
+test('invalid editing data and data-mode mismatches cannot write a report', async () => {
+  const { app } = harness();
+  const original = fixture(app);
+  app.reportService.saveAllReports([original]);
+  const invalid = JSON.parse(JSON.stringify(original));
+  invalid.items[0].refLow = 9;
+  invalid.items[0].refHigh = 1;
+  await assert.rejects(app.saveEditedReport(invalid, { report: original, mode: 'local' }), /参考下限不能大于上限/);
+  await assert.rejects(app.saveEditedReport(original, { report: original, mode: 'api' }), /数据来源已变化/);
+  assert.equal(app.getReports()[0].items[0].refHigh, 6.1);
+});
+
+function entryRow(values, dataset = {}) {
+  const inputs = Object.fromEntries(Object.entries(values).map(([name, value]) => [name, { value: String(value) }]));
+  const badge = {};
+  return {
+    dataset,
+    inputs,
+    querySelector(selector) {
+      if (selector === '.ref-source-badge') return badge;
+      return inputs[selector.match(/name="([^"]+)"/)[1]];
+    }
+  };
+}
+function entryRoot(row) {
+  return {
+    querySelector: () => ({ reportType: { value: '生化检验' }, hospital: { value: '测试医院' }, date: { value: '2026-06-01' } }),
+    querySelectorAll: () => [row]
+  };
+}
+
+test('unchanged names retain report references; editing bounds becomes manual', () => {
+  const { app, context } = harness();
+  const row = entryRow({ itemName: 'GLU', itemValue: 5.4, itemUnit: 'mmol/L', itemRefLow: 3.8, itemRefHigh: 6.5 },
+    { referenceName: '空腹血糖', refSource: 'report', refText: '3.8–6.5', initialRefLow: '3.8', initialRefHigh: '6.5' });
+  context.applyReferenceDefaults(row, true);
+  assert.equal(row.inputs.itemName.value, '空腹血糖');
+  assert.equal(row.inputs.itemRefHigh.value, '6.5');
+  assert.equal(app.collectUploadFormData(entryRoot(row)).report.items[0].refSource, 'report');
+  row.inputs.itemRefHigh.value = '5.1';
+  context.setRowRefSource(row, 'manual');
+  const item = app.collectUploadFormData(entryRoot(row)).report.items[0];
+  assert.equal(item.refSource, 'manual');
+  assert.equal(item.refText, '3.8–5.1');
+  assert.equal(item.status, 'high');
+});
+
+test('value-only changes retain one-sided reference text from the report', () => {
+  const { app } = harness();
+  const row = entryRow({ itemName: 'TC', itemValue: 4.4, itemUnit: 'mmol/L', itemRefLow: 0, itemRefHigh: 5.2 },
+    { referenceName: '总胆固醇', refSource: 'report', refText: '<5.2', initialRefLow: '0', initialRefHigh: '5.2' });
+  const item = app.collectUploadFormData(entryRoot(row)).report.items[0];
+  assert.equal(item.refText, '<5.2');
+  assert.equal(item.refSource, 'report');
+});
+
+test('report search supports hospitals, types, item names, aliases and literal input', () => {
+  const { app } = harness();
+  const reports = app.getReports();
+  const base = { search: '', reportType: '', status: '', startDate: '', endDate: '' };
+  for (const search of ['市第一', '血常规', '空腹血糖', 'glu', 'LDL']) {
+    assert.ok(app.filterReports(reports, { ...base, search }).length > 0, search);
+  }
+  assert.equal(app.filterReports(reports, { ...base, search: '不存在的医院' }).length, 0);
+  assert.equal(app.filterReports(reports, { ...base, search: '.*[' }).length, 0);
+  assert.equal(app.filterReports(reports, base).length, reports.length);
+});
+
+test('date/type/status filters combine, include boundary dates and sort newest first', () => {
+  const { app } = harness();
+  const reports = app.getReports();
+  const filters = { search: '', reportType: '生化检验', status: 'abnormal', startDate: '2026-03-28', endDate: '2026-03-28' };
+  const found = app.filterReports(reports, filters);
+  assert.equal(found.length, 1);
+  assert.equal(found[0].date, '2026-03-28');
+  const normal = app.filterReports(reports, { ...filters, reportType: '', startDate: '', endDate: '', status: 'normal' });
+  assert.ok(normal.length);
+  assert.ok(normal.every(report => app.getAbnormalItems(report).length === 0));
+  assert.equal(app.getReportFilterError({ ...filters, endDate: '2026-01-01' }), '开始日期不能晚于结束日期。');
+  assert.ok(app.getReportFilterError({ ...filters, startDate: '2026-02-30' }));
+});
+
+test('no search results and no reports have distinct empty states', () => {
+  const { roots, run } = harness();
+  run("reportListFilters.search = '不存在的医院'; renderReports();");
+  assert.match(roots.get('reports').innerHTML, /没有匹配的报告/);
+  assert.match(roots.get('reports').innerHTML, /重置搜索与筛选/);
+  run('reportService.clearReports(); renderReports();');
+  assert.match(roots.get('reports').innerHTML, /暂无报告数据/);
+  assert.doesNotMatch(roots.get('reports').innerHTML, /没有匹配的报告/);
+});
+
+test('dirty editors can cancel navigation, discard explicitly, and block while saving', () => {
+  const { context, roots, run } = harness();
+  const input = { name: 'hospital', value: '原医院' };
+  roots.get('upload').querySelectorAll = () => [input];
+  run("screens.forEach(screen => screen.classList.toggle('active', screen.id === 'upload')); reportEditSession = { snapshot: getReportFormSnapshot(), saving: false };");
+  input.value = '未保存医院';
+  context.confirm = () => false;
+  assert.equal(context.canLeaveReportEditor('reports'), false);
+  assert.ok(run('reportEditSession'));
+  run('reportEditSession.saving = true;');
+  assert.equal(context.canLeaveReportEditor('reports'), false);
+  run('reportEditSession.saving = false;');
+  context.confirm = () => true;
+  assert.equal(context.canLeaveReportEditor('reports'), true);
+  assert.equal(run('reportEditSession'), null);
+});
+
+test('an AI interpretation started before an edit cannot overwrite fresh rule results', async () => {
+  const { app, context, run } = harness();
+  const original = fixture(app);
+  app.reportService.saveAllReports([original]);
+  run('renderAi = () => {};');
+  let finish;
+  context.aiResponse = new Promise(resolve => { finish = resolve; });
+  run('callAiInterpretApi = () => aiResponse;');
+  const pending = app.requestAiInterpretation(original.id);
+  const updated = JSON.parse(JSON.stringify(original));
+  updated.items[0].value = 5.4;
+  await app.saveEditedReport(updated, { report: original, mode: 'local' });
+  finish({ summary: '旧的7.4解读' });
+  await pending;
+  assert.equal(app.aiInterpretationState[original.id].source, 'mock');
+  assert.equal(app.aiInterpretationState[original.id].invalidated, true);
+  assert.equal(app.aiInterpretationState[original.id].result.abnormalItems.length, 0);
+});
+
+test('chat replies based on a pre-edit report are not appended after saving', async () => {
+  const { app, context, run } = harness();
+  const original = fixture(app);
+  app.reportService.saveAllReports([original]);
+  run('renderAi = () => {};');
+  let finish;
+  context.chatResponse = new Promise(resolve => { finish = resolve; });
+  run('callAiChatApi = () => chatResponse;');
+  const pending = context.sendChatQuestion('GLU是什么意思');
+  const updated = JSON.parse(JSON.stringify(original));
+  updated.items[0].value = 5.4;
+  await app.saveEditedReport(updated, { report: original, mode: 'local' });
+  finish('旧报告的7.4回复');
+  await pending;
+  assert.equal(app.getChatHistory().length, 1);
+  assert.equal(run('chatSending'), false);
+});
+
+test('late list refreshes cannot replace a report just updated through the API', async () => {
+  const { app, context } = harness();
+  const original = fixture(app);
+  app.setDataMode('api');
+  app.appState.reports = [original];
+  let finish;
+  context.fetch = async (url, options = {}) => options.method === 'PUT'
+    ? { ok: true, status: 200, json: async () => JSON.parse(options.body) }
+    : new Promise(resolve => { finish = resolve; });
+  const pending = app.loadReportsToState();
+  const updated = JSON.parse(JSON.stringify(original));
+  updated.items[0].value = 5.4;
+  await app.saveEditedReport(updated, { report: original, mode: 'api' });
+  finish({ ok: true, status: 200, json: async () => [original] });
+  await pending;
+  assert.equal(app.getReports()[0].items[0].value, 5.4);
+  assert.equal(app.appState.loading, false);
+});

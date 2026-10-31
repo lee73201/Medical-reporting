@@ -32,6 +32,12 @@ let chatRequestVersion = 0;
 let reportsLoadVersion = 0;
 let profileToolsOpen = false;
 let profileBusy = false;
+let reportEditSession = null;
+let reportListFilters = createReportFilters();
+
+function createReportFilters() {
+  return { search: '', reportType: '', status: '', startDate: '', endDate: '' };
+}
 
 
 const labReferenceDictionary = [
@@ -317,6 +323,8 @@ function setDataMode(mode) {
   selectedAiReportId = '';
   expandedAiReportId = '';
   overviewItemFilter = null;
+  reportListFilters = createReportFilters();
+  reportEditSession = null;
   Object.keys(aiInterpretationState).forEach(key => delete aiInterpretationState[key]);
   chatRequestVersion += 1;
   chatSending = false;
@@ -618,6 +626,7 @@ function formatDateTime(date) {
 
 async function showScreen(rawId) {
   const id = screens.some(screen => screen.id === rawId) ? rawId : 'overview';
+  if (!canLeaveReportEditor(id)) return;
   if (id === 'overview' && getActiveScreenId() !== 'overview') overviewItemFilter = null;
   screens.forEach(s => { s.classList.toggle('active', s.id === id); if (s.id === id) s.scrollTop = 0; });
   navButtons.forEach(btn => {
@@ -649,6 +658,37 @@ document.addEventListener('click', event => {
   }
   showScreen(trigger.dataset.go);
 });
+
+window.addEventListener?.('beforeunload', event => {
+  if (!reportEditSession || getActiveScreenId() !== 'upload') return;
+  if (reportEditSession.saving || isReportEditorDirty()) {
+    event.preventDefault();
+    event.returnValue = '';
+  }
+});
+
+function getReportFormSnapshot(root = document.querySelector('#upload')) {
+  return JSON.stringify({
+    fields: Array.from(root.querySelectorAll('#report-form input, #report-form select')).map(input => [input.name, input.value]),
+    sources: Array.from(root.querySelectorAll('#item-body tr')).map(row => row.dataset?.refSource)
+  });
+}
+function isReportEditorDirty() {
+  return Boolean(reportEditSession && getReportFormSnapshot() !== reportEditSession.snapshot);
+}
+function canLeaveReportEditor(targetScreen) {
+  if (!reportEditSession || getActiveScreenId() !== 'upload' || targetScreen === 'upload') return true;
+  if (reportEditSession.saving) { showNotice('正在保存报告，请稍候。'); return false; }
+  if (isReportEditorDirty() && !confirm('修改尚未保存，确认放弃本次编辑？')) return false;
+  reportEditSession = null;
+  return true;
+}
+async function startReportEdit(reportId) {
+  const report = getReports().find(item => item.id === reportId);
+  if (!report) { showNotice('未找到这份报告，请刷新列表后重试。'); return; }
+  reportEditSession = { report: normalizeReport(report), mode: appConfig.dataMode, saving: false, snapshot: '' };
+  await showScreen('upload');
+}
 
 function topBar(title, back = '') {
   return `<header class="app-top">${back ? `<button class="icon-btn" data-go="${esc(back)}" aria-label="返回"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>` : '<span></span>'}<h1>${esc(title)}</h1><span class="header-mark" aria-hidden="true">医检</span></header>${renderDataSource()}`;
@@ -747,14 +787,22 @@ function bindOverviewStatsEvents(root, report) {
 function renderUpload() {
   const root = document.querySelector('#upload');
   const today = formatDateTime(new Date()).slice(0, 10);
-  root.innerHTML = `${topBar('上传报告', 'reports')}
+  const editing = reportEditSession?.mode === appConfig.dataMode ? reportEditSession : null;
+  const report = editing?.report || { reportType: '生化检验', hospital: '市第一人民医院', date: today, items: [] };
+  root.innerHTML = `${topBar(editing ? '编辑报告' : '上传报告', editing ? 'report-detail' : 'reports')}
+    ${editing ? `<section class="edit-report-notice"><strong>${esc(report.patient.name)} · ${esc(report.patient.patientId)}</strong><p>修改后，旧 AI 解读将失效。请按原报告核对数据。</p></section>` : `
     <article class="card upload-hero pdf-upload-card"><div><div class="cloud"><svg viewBox="0 0 24 24"><path d="M12 19V9M8 13l4-4 4 4M20 17.5A4.5 4.5 0 0 0 15.5 13h-.7A6 6 0 1 0 5 17.5"/></svg></div><h2>上传报告文件</h2><p>支持文本型 PDF；扫描件和图片型 PDF 暂不支持</p><button class="primary-btn" id="choose-file" type="button" style="width:118px;min-height:38px">选择 PDF</button><input id="pdf-file-input" type="file" accept="application/pdf,.pdf" hidden><p style="margin-top:14px">PDF 仅在浏览器本地解析，不上传服务器。OCR 解析将在后续版本加入。</p></div></article>
     <article class="card paste-parse-card"><h2>粘贴报告文本解析</h2><p>可把文本型 PDF 中复制出的报告内容粘贴到这里，使用同一套解析规则生成预览。</p><textarea id="paste-report-text" rows="7" placeholder="例如：GLU 7.4 mmol/L 3.9-6.1"></textarea><button class="outline-btn" id="parse-pasted-text" type="button">解析粘贴文本</button><div class="form-message" id="paste-parse-message" aria-live="polite"></div></article>
-    <section id="pdf-preview-root"></section>
-    <form id="report-form" novalidate><article class="card form-card"><h2>报告基本信息</h2><div class="field-row"><label>报告类型</label><span class="input-wrap"><select name="reportType"><option>生化检验</option><option>血常规</option><option>尿常规</option></select></span></div><div class="field-row"><label>医院名称</label><span class="input-wrap"><input name="hospital" value="市第一人民医院"></span></div><div class="field-row"><label>报告日期</label><span class="input-wrap"><input name="date" type="date" value="${today}"></span></div></article>
-    <article class="card form-card"><div class="section-head"><h2>检验项目</h2><button id="add-item" type="button">添加项目 ></button></div><p class="reference-note upload-note">参考范围以原报告为准，系统默认值仅用于辅助录入。</p><table class="item-table upload-item-table"><thead><tr><th>项目名称</th><th>数值</th><th>单位</th><th>参考下限</th><th>参考上限</th><th>来源</th><th>操作</th></tr></thead><tbody id="item-body"></tbody></table><button class="outline-btn" id="add-item-wide" type="button" style="width:100%;margin-top:12px">＋ 添加检验项目</button><div class="form-message" id="upload-message" aria-live="polite"></div></article><button class="primary-btn" type="submit" style="margin-top:14px">保存报告</button></form>`;
+    <section id="pdf-preview-root"></section>`}
+    <form id="report-form" novalidate><article class="card form-card"><h2>报告基本信息</h2>
+      <div class="field-row"><label for="entry-report-type">报告类型</label><span class="input-wrap"><input id="entry-report-type" name="reportType" list="report-types" value="${esc(report.reportType)}" maxlength="100"><datalist id="report-types"><option>生化检验</option><option>血常规</option><option>尿常规</option><option>检验报告</option></datalist></span></div>
+      <div class="field-row"><label for="entry-hospital">医院名称</label><span class="input-wrap"><input id="entry-hospital" name="hospital" value="${esc(report.hospital)}" maxlength="200"></span></div>
+      <div class="field-row"><label for="entry-date">报告日期</label><span class="input-wrap"><input id="entry-date" name="date" type="date" value="${esc(report.date)}"></span></div></article>
+    <article class="card form-card"><div class="section-head"><h2>检验项目</h2><button id="add-item" type="button">添加项目 ></button></div><p class="reference-note upload-note">参考范围以原报告为准，系统默认值仅用于辅助录入。</p><table class="item-table upload-item-table"><thead><tr><th>项目名称</th><th>数值</th><th>单位</th><th>参考下限</th><th>参考上限</th><th>来源</th><th>操作</th></tr></thead><tbody id="item-body"></tbody></table><button class="outline-btn" id="add-item-wide" type="button" style="width:100%;margin-top:12px">＋ 添加检验项目</button><div class="form-message" id="upload-message" aria-live="polite"></div></article>
+    <div class="report-save-actions ${editing ? 'editing' : ''}">${editing ? '<button class="outline-btn" type="button" data-go="report-detail">取消编辑</button>' : ''}<button class="primary-btn" type="submit">${editing ? '保存修改' : '保存报告'}</button></div></form>`;
   const body = root.querySelector('#item-body');
-  body.append(createEmptyLabItemForm());
+  (report.items.length ? report.items : [{}]).forEach(item => body.append(createEmptyLabItemForm(item)));
+  if (editing) editing.snapshot = getReportFormSnapshot(root);
   bindUploadEvents(root);
 }
 function createEmptyLabItemForm(item = {}) {
@@ -765,20 +813,27 @@ function createEmptyLabItemForm(item = {}) {
   const tr = document.createElement('tr');
   tr.className = 'upload-item-row';
   tr.dataset.refSource = refSource;
-  tr.innerHTML = `<td><input name="itemName" value="${esc(item.name || '')}" placeholder="项目/缩写"></td><td><input name="itemValue" value="${esc(item.value ?? '')}" type="number" step="0.01" placeholder="数值"></td><td><input name="itemUnit" value="${esc(item.unit || defaults?.unit || '')}" placeholder="单位"></td><td><input name="itemRefLow" value="${esc(refLow)}" type="number" step="0.01" placeholder="下限"></td><td><input name="itemRefHigh" value="${esc(refHigh)}" type="number" step="0.01" placeholder="上限"></td><td><span class="ref-source-badge ${refSource}">${refSourceText(refSource)}</span></td><td><button class="trash" type="button" data-upload-action="delete-item">⌫</button></td>`;
+  tr.dataset.referenceName = normalizeLabItemName(item.name || '');
+  tr.dataset.refText = item.refText || defaults?.refText || '';
+  tr.dataset.initialRefLow = String(refLow);
+  tr.dataset.initialRefHigh = String(refHigh);
+  tr.innerHTML = `<td><input name="itemName" aria-label="项目名称" value="${esc(item.name || '')}" placeholder="项目/缩写"></td><td><input name="itemValue" aria-label="数值" value="${esc(item.value ?? '')}" type="number" step="any" placeholder="数值"></td><td><input name="itemUnit" aria-label="单位" value="${esc(item.unit || defaults?.unit || '')}" placeholder="单位"></td><td><input name="itemRefLow" aria-label="参考下限" value="${esc(refLow)}" type="number" step="any" placeholder="下限"></td><td><input name="itemRefHigh" aria-label="参考上限" value="${esc(refHigh)}" type="number" step="any" placeholder="上限"></td><td><span class="ref-source-badge ${refSource}">${refSourceText(refSource)}</span></td><td><button class="trash" type="button" aria-label="删除此项目" data-upload-action="delete-item">⌫</button></td>`;
   return tr;
 }
 function bindUploadEvents(root) {
   const body = root.querySelector('#item-body');
   const message = root.querySelector('#upload-message');
   const addRow = () => body.append(createEmptyLabItemForm());
-  root.querySelector('#choose-file').onclick = () => root.querySelector('#pdf-file-input').click();
-  root.querySelector('#pdf-file-input').onchange = event => {
+  const chooseFile = root.querySelector('#choose-file');
+  if (chooseFile) chooseFile.onclick = () => root.querySelector('#pdf-file-input').click();
+  const fileInput = root.querySelector('#pdf-file-input');
+  if (fileInput) fileInput.onchange = event => {
     const file = event.target.files?.[0];
     if (file) handlePdfUpload(file, root);
     event.target.value = '';
   };
-  root.querySelector('#parse-pasted-text').onclick = () => handlePastedTextParse(root);
+  const pasteButton = root.querySelector('#parse-pasted-text');
+  if (pasteButton) pasteButton.onclick = () => handlePastedTextParse(root);
   root.querySelector('#add-item').onclick = addRow;
   root.querySelector('#add-item-wide').onclick = addRow;
   body.addEventListener('input', (event) => {
@@ -802,6 +857,7 @@ function bindUploadEvents(root) {
     event.preventDefault();
     const submit = event.currentTarget.querySelector('[type="submit"]');
     if (submit.disabled) return;
+    const editing = reportEditSession;
     const result = collectUploadFormData(root);
     if (result.errors.length) {
       showUploadMessage(message, result.errors[0], 'error');
@@ -809,17 +865,28 @@ function bindUploadEvents(root) {
     }
     submit.disabled = true;
     submit.textContent = '正在保存…';
+    const inputs = Array.from(root.querySelectorAll('#report-form input, #report-form button'));
+    inputs.forEach(input => { input.disabled = true; });
+    if (editing) editing.saving = true;
     try {
-      const saved = await saveUploadedReport(result.report);
+      const saved = editing ? await saveEditedReport(result.report, editing) : await saveUploadedReport(result.report);
       selectedReportId = saved.id;
       setStoredSelectedReportId(selectedReportId);
       selectedTrendItem = saved.items[0]?.name || selectedTrendItem;
-      showUploadMessage(message, '报告保存成功', 'success');
-      setTimeout(() => { if (getActiveScreenId() === 'upload') showScreen('overview'); }, 600);
+      if (editing) {
+        reportEditSession = null;
+        await showScreen('report-detail');
+        showNotice('报告已更新');
+      } else {
+        showUploadMessage(message, '报告保存成功', 'success');
+        setTimeout(() => { if (getActiveScreenId() === 'upload') showScreen('overview'); }, 600);
+      }
     } catch (error) {
       showUploadMessage(message, `保存失败：${error.message}`, 'error');
-      submit.disabled = false;
-      submit.textContent = '保存报告';
+      inputs.forEach(input => { input.disabled = false; });
+      submit.textContent = editing ? '保存修改' : '保存报告';
+    } finally {
+      if (editing) editing.saving = false;
     }
   };
 }
@@ -829,15 +896,22 @@ function applyReferenceDefaults(row, shouldNormalize) {
   const unitInput = row.querySelector('[name="itemUnit"]');
   const lowInput = row.querySelector('[name="itemRefLow"]');
   const highInput = row.querySelector('[name="itemRefHigh"]');
-  const defaults = getDefaultReferenceRange(nameInput.value);
+  const canonicalName = normalizeLabItemName(nameInput.value);
+  if (shouldNormalize) nameInput.value = canonicalName;
+  // Blurring an unchanged name must not replace the report's own reference range.
+  if (canonicalName === row.dataset.referenceName) return;
+  row.dataset.referenceName = canonicalName;
+  const defaults = getDefaultReferenceRange(canonicalName);
   if (!defaults) {
     setRowRefSource(row, 'unknown');
     return;
   }
-  if (shouldNormalize) nameInput.value = normalizeLabItemName(nameInput.value);
   unitInput.value = defaults.unit;
   lowInput.value = defaults.refLow;
   highInput.value = defaults.refHigh;
+  row.dataset.refText = defaults.refText;
+  row.dataset.initialRefLow = String(defaults.refLow);
+  row.dataset.initialRefHigh = String(defaults.refHigh);
   setRowRefSource(row, 'dictionary');
 }
 function setRowRefSource(row, source) {
@@ -876,10 +950,13 @@ function collectUploadFormData(root = document.querySelector('#upload')) {
       errors.push(`第 ${index + 1} 个检验项目的数值或参考范围格式不正确`);
       return null;
     }
-    const source = row.dataset.refSource === 'dictionary' ? 'dictionary' : 'manual';
-    return { name: normalizeLabItemName(nameRaw), value, unit, refLow, refHigh, refText: `${refLow}–${refHigh}`, refSource: source, status: calculateItemStatus(value, refLow, refHigh) };
+    const source = ['dictionary', 'report', 'manual'].includes(row.dataset.refSource)
+      ? row.dataset.refSource : reportEditSession && row.dataset.refSource === 'unknown' ? 'unknown' : 'manual';
+    const sameBounds = refLow === Number(row.dataset.initialRefLow) && refHigh === Number(row.dataset.initialRefHigh);
+    const refText = sameBounds && row.dataset.refText ? row.dataset.refText : `${refLow}–${refHigh}`;
+    return { name: normalizeLabItemName(nameRaw), value, unit, refLow, refHigh, refText, refSource: source, status: calculateItemStatus(value, refLow, refHigh) };
   }).filter(Boolean);
-  const report = { id: `r${Date.now()}`, patient, reportType: form.reportType.value.trim(), hospital: form.hospital.value.trim(), date: form.date.value, items };
+  const report = { id: reportEditSession?.report.id || `r${Date.now()}`, patient: reportEditSession?.report.patient || patient, reportType: form.reportType.value.trim(), hospital: form.hospital.value.trim(), date: form.date.value, items };
   errors.push(...validateUploadForm(report));
   return { report, errors };
 }
@@ -888,12 +965,46 @@ function validateUploadForm(report) {
   if (!report.reportType) errors.push('请填写报告类型');
   if (!report.hospital) errors.push('请填写医院名称');
   if (!report.date) errors.push('请选择报告日期');
+  else if (!isValidReportDate(report.date)) errors.push('报告日期格式不正确，请重新选择');
   if (!report.items.length) errors.push('请至少填写一个完整检验项目');
   report.items.forEach((item, index) => {
     if (!item.name || !item.unit || !Number.isFinite(item.value) || !Number.isFinite(item.refLow) || !Number.isFinite(item.refHigh)) errors.push(`第 ${index + 1} 个检验项目未填写完整`);
     if (Number.isFinite(item.refLow) && Number.isFinite(item.refHigh) && item.refLow > item.refHigh) errors.push(`第 ${index + 1} 个检验项目参考下限不能大于上限`);
   });
   return errors;
+}
+function isValidReportDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+function invalidateReportInterpretation(report) {
+  aiInterpretationState[report.id] = { loading: false, error: '', source: 'mock', invalidated: true, result: generateAiInterpretation(report) };
+  // Pending replies may have read the old report; do not append them after an edit.
+  chatRequestVersion += 1;
+  chatSending = false;
+  selectedTrendPointKey = '';
+}
+async function saveEditedReport(report, session = reportEditSession) {
+  if (!session || session.mode !== appConfig.dataMode) throw new Error('数据来源已变化，请重新打开报告后编辑。');
+  const errors = validateUploadForm(report);
+  if (errors.length) throw new Error(errors[0]);
+  if (!getReports().some(item => item.id === session.report.id)) throw new Error('原报告已不存在，请返回列表刷新。');
+  const next = normalizeReport({ ...report, id: session.report.id, patient: session.report.patient });
+  if (JSON.stringify(next) === JSON.stringify(normalizeReport(session.report))) return next;
+  const saved = await reportService.updateReportAsync(next.id, next);
+  if (!saved) throw new Error('原报告已不存在，请返回列表刷新。');
+  if (session.mode === appConfig.dataMode) {
+    if (session.mode === 'api') {
+      reportsLoadVersion += 1;
+      appState.loading = false;
+      appState.reports = appState.reports.map(item => item.id === saved.id ? saved : item);
+      appState.reportsLoaded = true;
+      appState.error = null;
+    }
+    invalidateReportInterpretation(saved);
+  }
+  return saved;
 }
 async function saveUploadedReport(report) {
   const saved = appConfig.dataMode === 'api'
@@ -1315,10 +1426,85 @@ function collectParsedPdfPreview(root) {
   errors.push(...validateUploadForm(report));
   return { report: normalizeReport(report), errors };
 }
+function getReportFilterError(filters) {
+  if ((filters.startDate && !isValidReportDate(filters.startDate)) || (filters.endDate && !isValidReportDate(filters.endDate))) return '请选择有效的报告日期。';
+  if (filters.startDate && filters.endDate && filters.startDate > filters.endDate) return '开始日期不能晚于结束日期。';
+  return '';
+}
+function filterReports(reports, filters = reportListFilters) {
+  if (getReportFilterError(filters)) return [];
+  const tokens = String(filters.search || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return reports.filter(report => {
+    if (filters.reportType && report.reportType !== filters.reportType) return false;
+    if (filters.startDate && report.date < filters.startDate) return false;
+    if (filters.endDate && report.date > filters.endDate) return false;
+    const abnormal = getAbnormalItems(report).length;
+    if (filters.status === 'abnormal' && abnormal === 0) return false;
+    if (filters.status === 'normal' && (!report.items.length || abnormal > 0)) return false;
+    const itemNames = report.items.flatMap(item => {
+      const entry = labReferenceDictionary.find(candidate => candidate.name === normalizeLabItemName(item.name));
+      return [item.name, ...(entry?.aliases || [])];
+    });
+    const searchable = [report.hospital, report.reportType, report.date, ...itemNames].join(' ').toLowerCase();
+    return tokens.every(token => searchable.includes(token));
+  }).sort((a, b) => b.date.localeCompare(a.date));
+}
+function renderReportListCard(report) {
+  const count = getAbnormalItems(report).length;
+  return `<article class="card report-card"><div class="report-title"><div class="flask-icon" aria-hidden="true">⚗</div><div><h2>${esc(report.reportType)}</h2><p>${esc(report.hospital)}</p></div><div class="report-date">${esc(report.date)}</div></div>
+    <div class="report-count-row"><span>总项目 ${report.items.length} 项</span><span class="status-badge ${count ? 'high' : 'normal'}">${report.items.length ? `异常 ${count} 项` : '暂无检验项目'}</span></div>
+    <div class="report-actions"><button class="outline-btn" data-go="report-detail" data-report-id="${esc(report.id)}">查看详情</button><button class="outline-btn" data-go="ai-insights" data-report-id="${esc(report.id)}">AI 解读</button><button class="outline-btn" data-go="trends" data-item-name="${esc(report.items[0]?.name || '')}">趋势分析</button></div></article>`;
+}
+function renderReportSearchResults(reports) {
+  const error = getReportFilterError(reportListFilters);
+  if (error) return `<div class="report-filter-error" role="alert">${esc(error)}</div>`;
+  if (!reports.length) return renderEmptyState('暂无报告数据，请先上传或录入一份检验报告。', '上传新报告', 'upload');
+  const filtered = filterReports(reports);
+  return `<p class="report-result-count" role="status">显示 ${filtered.length} 份 / 共 ${reports.length} 份报告</p>${filtered.length ? `<div class="report-list">${filtered.map(renderReportListCard).join('')}</div>` : '<section class="report-search-empty"><h2>没有匹配的报告</h2><p>试试其他关键词，或调整日期与状态筛选。</p><button class="outline-btn" type="button" data-reset-report-filters>重置搜索与筛选</button></section>'}`;
+}
 function renderReports() {
   const root = document.querySelector('#reports');
-  const reports = [...getReports()].sort((a,b)=>b.date.localeCompare(a.date));
-  root.innerHTML = `${topBar('报告列表')}${reports.length ? `<div class="report-list">${reports.map(r => `<article class="card report-card"><div class="report-title"><div class="flask-icon">⚗</div><div><h2>${esc(r.reportType)}</h2><p>${esc(r.hospital)}</p></div><div class="report-date">${esc(r.date)}</div></div><div class="report-alert">总项目 ${r.items.length} 项 · 异常项目 ${getAbnormalItems(r).length} 项</div><div class="report-actions"><button class="outline-btn" data-go="report-detail" data-report-id="${esc(r.id)}">查看详情</button><button class="outline-btn" data-go="ai-insights" data-report-id="${esc(r.id)}">AI 解读</button><button class="outline-btn" data-go="trends" data-item-name="${esc(r.items[0]?.name || '')}">趋势分析</button></div></article>`).join('')}</div>` : renderEmptyState('暂无报告数据，请先上传或录入一份检验报告。', '上传新报告', 'upload')}<button class="float-add" data-go="upload" aria-label="新增报告" title="新增报告">＋</button>`;
+  const reports = getReports();
+  const types = [...new Set([...reports.map(report => report.reportType), reportListFilters.reportType].filter(Boolean))];
+  root.innerHTML = `${topBar('报告列表')}
+    <form class="report-filter-form" id="report-filter-form" role="search" novalidate>
+      <div class="report-search-field"><input name="search" aria-label="搜索报告" placeholder="搜索医院、类型或检验项目" value="${esc(reportListFilters.search)}" enterkeyhint="search" autocomplete="off"><button type="button" class="report-search-clear" data-clear-report-search aria-label="清空搜索" title="清空搜索" ${reportListFilters.search ? '' : 'hidden'}>×</button><button class="report-search-submit" type="submit">搜索</button></div>
+      <details class="report-filter-details"><summary>筛选条件</summary><div class="report-filter-grid">
+        <label>报告类型<select name="reportType"><option value="">全部类型</option>${types.map(type => `<option value="${esc(type)}" ${type === reportListFilters.reportType ? 'selected' : ''}>${esc(type)}</option>`).join('')}</select></label>
+        <label>指标状态<select name="status"><option value="">全部状态</option><option value="abnormal" ${reportListFilters.status === 'abnormal' ? 'selected' : ''}>有异常</option><option value="normal" ${reportListFilters.status === 'normal' ? 'selected' : ''}>未见异常</option></select></label>
+        <label>开始日期<input type="date" name="startDate" value="${esc(reportListFilters.startDate)}"></label><label>结束日期<input type="date" name="endDate" value="${esc(reportListFilters.endDate)}"></label>
+      </div></details><div class="report-filter-footer"><span data-filter-summary>${esc(reportFilterSummary())}</span><button type="button" data-reset-report-filters>重置</button></div>
+    </form><div id="report-results">${renderReportSearchResults(reports)}</div><button class="float-add" data-go="upload" aria-label="新增报告" title="新增报告">＋</button>`;
+  bindReportSearchEvents(root);
+}
+function reportFilterSummary() {
+  const count = Object.values(reportListFilters).filter(value => String(value).trim()).length;
+  return count ? `已应用 ${count} 项条件` : '全部报告 · 日期从新到旧';
+}
+function bindReportSearchEvents(root) {
+  const form = root.querySelector('#report-filter-form');
+  if (!form) return;
+  const update = () => {
+    Object.keys(reportListFilters).forEach(key => { reportListFilters[key] = form.elements.namedItem(key).value; });
+    root.querySelector('#report-results').innerHTML = renderReportSearchResults(getReports());
+    root.querySelector('[data-clear-report-search]').hidden = !reportListFilters.search;
+    root.querySelector('[data-filter-summary]').textContent = reportFilterSummary();
+  };
+  form.onsubmit = event => { event.preventDefault(); update(); };
+  form.elements.namedItem('search').oninput = update;
+  form.onchange = update;
+  root.onclick = event => {
+    if (event.target.closest('[data-reset-report-filters]')) {
+      reportListFilters = createReportFilters();
+      Object.keys(reportListFilters).forEach(key => { form.elements.namedItem(key).value = ''; });
+      update();
+    }
+    if (event.target.closest('[data-clear-report-search]')) {
+      form.elements.namedItem('search').value = '';
+      update();
+      form.elements.namedItem('search').focus();
+    }
+  };
 }
 function renderDetail() { renderReportDetail(); }
 function renderReportDetail() {
@@ -1331,7 +1517,7 @@ function renderReportDetail() {
   selectedReportId = r.id;
   const root = document.querySelector('#report-detail');
   setStoredSelectedReportId(selectedReportId);
-  root.innerHTML = `${topBar('报告详情', 'reports')}<article class="card detail-summary"><div class="detail-title"><div><h2>⚗ ${esc(r.reportType)}</h2><p>${esc(r.hospital)}</p></div><span class="report-date">${esc(r.date)}</span></div><div class="patient-meta"><span>${esc(r.patient.name)}</span><span>${esc(r.patient.age)}岁</span><span>ID: ${esc(r.patient.patientId)}</span></div><div class="detail-stats"><div><strong>${r.items.length}</strong><span>总项目</span></div><div><strong class="green">${r.items.length-bad.length}</strong><span>正常</span></div><div><strong class="red">${bad.length}</strong><span>异常</span></div></div></article><section class="lab-item-list"><div class="section-head detail-section-head"><h2>检验项目</h2><span>${r.items.length} 项</span></div>${r.items.map((item, index) => renderLabItemCard(item, index)).join('')}</section>`;
+  root.innerHTML = `${topBar('报告详情', 'reports')}<article class="card detail-summary"><div class="detail-title"><div><h2>⚗ ${esc(r.reportType)}</h2><p>${esc(r.hospital)}</p></div><span class="report-date">${esc(r.date)}</span></div><div class="patient-meta"><span>${esc(r.patient.name)}</span><span>${esc(r.patient.age)}岁</span><span>ID: ${esc(r.patient.patientId)}</span></div><div class="detail-stats"><div><strong>${r.items.length}</strong><span>总项目</span></div><div><strong class="green">${r.items.length-bad.length}</strong><span>正常</span></div><div><strong class="red">${bad.length}</strong><span>异常</span></div></div><div class="detail-edit-action"><button class="outline-btn" type="button" data-edit-report="${esc(r.id)}">编辑报告</button></div></article><section class="lab-item-list"><div class="section-head detail-section-head"><h2>检验项目</h2><span>${r.items.length} 项</span></div>${r.items.map((item, index) => renderLabItemCard(item, index)).join('')}</section>`;
   bindReportDetailEvents(root, r);
 }
 function renderLabItemCard(item, index) {
@@ -1345,6 +1531,8 @@ function renderLabItemCard(item, index) {
 }
 function bindReportDetailEvents(root, report) {
   root.onclick = event => {
+    const editButton = event.target.closest('[data-edit-report]');
+    if (editButton) { startReportEdit(editButton.dataset.editReport); return; }
     const button = event.target.closest('[data-explain-index]');
     if (!button) return;
     const index = Number(button.dataset.explainIndex);
@@ -1511,14 +1699,14 @@ async function requestAiInterpretation(reportId) {
   const mode = appConfig.dataMode;
   const report = getReports().find(item => item.id === reportId);
   if (!report) return;
-  const requestState = { loading: true, error: '', source: 'mock', result: generateAiInterpretation(report) };
+  const requestState = { loading: true, error: '', source: 'mock', invalidated: Boolean(aiInterpretationState[reportId]?.invalidated), result: generateAiInterpretation(report) };
   aiInterpretationState[reportId] = requestState;
   renderAi();
   const result = await callAiInterpretApi(report);
   if (mode !== appConfig.dataMode || aiInterpretationState[reportId] !== requestState) return;
   aiInterpretationState[reportId] = result
     ? { loading: false, error: '', source: 'ai', result }
-    : { loading: false, error: 'AI 服务暂不可用，已显示本地规则解读。', source: 'mock', result: generateAiInterpretation(report) };
+    : { loading: false, error: 'AI 服务暂不可用，已显示本地规则解读。', source: 'mock', invalidated: requestState.invalidated, result: generateAiInterpretation(report) };
   if (getActiveScreenId() === 'ai-insights') renderAi();
 }
 async function sendChatQuestion(rawQuestion) {
@@ -1554,7 +1742,7 @@ function renderChatPanel(report, messages) {
 function renderChatContextCard(report) {
   const normalizedReport = normalizeReport(report);
   const bad = getAbnormalItems(normalizedReport);
-  return `<article class="card chat-context-card"><div><h2>当前参考报告</h2><p>${esc(normalizedReport.reportType)} · ${esc(normalizedReport.hospital)}</p><small>${esc(normalizedReport.date)} · ${esc(normalizedReport.patient.name)}</small></div><div class="chat-context-grid"><span><strong>${normalizedReport.items.length}</strong>总项目</span><span><strong>${bad.length}</strong>异常</span></div></article>`;
+  return `<article class="card chat-context-card"><div><h2>当前参考报告</h2><p>${esc(normalizedReport.reportType)} · ${esc(normalizedReport.hospital)}</p><small>${esc(normalizedReport.date)} · ${esc(normalizedReport.patient.name)}</small></div><div class="chat-context-grid"><span><strong>${normalizedReport.items.length}</strong>总项目</span><span><strong>${bad.length}</strong>异常</span></div></article><p class="chat-history-note">历史消息保留原回复；新提问以当前报告为准。</p>`;
 }
 function renderQuickQuestions() {
   const questions = ['这份报告有什么异常？', '我的空腹血糖严重吗？', '低密度脂蛋白是什么意思？', '我需要复查吗？'];
@@ -1586,6 +1774,7 @@ function renderAiReportCard(report, options = {}) {
   return `<article class="card ai-report-card ${expanded ? 'expanded' : 'collapsed'} ${highlighted ? 'highlighted' : ''}">
     <div class="ai-card-header"><div><h3>${esc(normalizedReport.reportType)}</h3><p>${esc(normalizedReport.hospital)} · ${esc(normalizedReport.patient.name)}</p><div class="ai-card-tags">${isLatest ? '<span>最新报告</span>' : ''}${isSelected ? '<span>当前查看</span>' : ''}</div></div><div><span class="report-date">${esc(normalizedReport.date)}</span><small class="status-badge ${bad.length ? 'high' : 'normal'}">异常 ${bad.length} 项</small></div></div>
     <div class="ai-summary-grid"><div><strong>${normalizedReport.items.length}</strong><span>总项目</span></div><div><strong>${normal}</strong><span>正常</span></div><div><strong class="${bad.length ? 'red' : 'green'}">${bad.length}</strong><span>异常</span></div></div>
+    ${expanded && aiState.invalidated ? '<p class="ai-report-updated" role="status">报告已修改，旧 AI 解读已失效。当前解读基于更新后的数据。</p>' : ''}
     ${expanded ? `<div class="ai-generate-row"><span class="ai-source-chip ${aiState.source}">${aiState.source === 'ai' ? 'AI 生成' : '本地规则生成'}</span><button class="outline-btn ai-expand-button" type="button" data-ai-refresh="${esc(normalizedReport.id)}" ${aiState.loading ? 'disabled' : ''}>${aiState.loading ? '正在生成 AI 解读…' : '使用 AI 重新解读'}</button></div>${aiState.error ? `<div class="form-message error ai-inline-message">${esc(aiState.error)}</div>` : ''}${renderAiInterpretation(aiState.result)}` : `<div class="ai-report-summary"><div><strong>主要异常</strong><p>${abnormalNames.length ? abnormalNames.map(esc).join('、') : '未发现明显异常指标'}</p></div>${canToggle ? `<button class="outline-btn ai-expand-button" type="button" data-ai-toggle="${esc(normalizedReport.id)}">查看完整解读</button>` : ''}</div>`}
     ${expanded && canToggle ? `<button class="outline-btn ai-expand-button collapse" type="button" data-ai-toggle="${esc(normalizedReport.id)}">收起解读</button>` : ''}
   </article>`;
@@ -1930,4 +2119,5 @@ function readJson(key, fallback) { try { return JSON.parse(localStorage.getItem(
 window.appConfig=appConfig; window.appState=appState; window.reportService=reportService; window.chatService=chatService; window.setDataMode=setDataMode; window.loadReportsToState=loadReportsToState; window.refreshReportsAndRender=refreshReportsAndRender; window.checkApiHealth=checkApiHealth; window.switchToApiMode=switchToApiMode; window.switchToLocalMode=switchToLocalMode; window.apiHealthText=apiHealthText; window.labReferenceDictionary=labReferenceDictionary; window.medicalItemDictionary=medicalItemDictionary; window.normalizeReport=normalizeReport; window.normalizeReports=normalizeReports; window.normalizeLabItemName=normalizeLabItemName; window.getDefaultReferenceRange=getDefaultReferenceRange; window.getMedicalItemInfo=getMedicalItemInfo; window.explainLabItem=explainLabItem; window.getReports=getReports; window.saveReports=saveReports; window.addReport=addReport; window.calculateItemStatus=calculateItemStatus; window.getLatestReport=getLatestReport; window.getAbnormalItems=getAbnormalItems; window.getOverviewStats=getOverviewStats; window.getTrendData=getTrendData; window.trendStatus=trendStatus; window.statusText=statusText; window.formatValue=formatValue; window.formatRange=formatRange; window.generateAiInterpretation=generateAiInterpretation; window.aiInterpretationToText=aiInterpretationToText; window.generateAiInterpretationText=generateAiInterpretationText; window.generateMockChatReply=generateMockChatReply; window.getCurrentChatReport=getCurrentChatReport; window.getChatHistory=getChatHistory; window.saveChatHistory=saveChatHistory; window.clearChatHistory=clearChatHistory; window.addChatMessage=addChatMessage; window.callAiChatApi=callAiChatApi; window.findMatchedLabItem=findMatchedLabItem; window.buildReportSummaryReply=buildReportSummaryReply; window.buildItemExplanationReply=buildItemExplanationReply; window.isMedicalAdviceQuestion=isMedicalAdviceQuestion; window.renderChatPanel=renderChatPanel; window.renderChatContextCard=renderChatContextCard; window.renderChatMessages=renderChatMessages; window.renderQuickQuestions=renderQuickQuestions; window.loadPdfJsIfNeeded=loadPdfJsIfNeeded; window.extractTextFromPdfFile=extractTextFromPdfFile; window.groupTextItemsIntoLines=groupTextItemsIntoLines; window.normalizePdfText=normalizePdfText; window.parsePdfReportText=parsePdfReportText; window.parseReportMetaFromText=parseReportMetaFromText; window.parseLabItemsFromText=parseLabItemsFromText; window.parseLabLine=parseLabLine; window.parsePdfReferenceRange=parsePdfReferenceRange; window.normalizeParsedUnit=normalizeParsedUnit; window.buildReportFromParsedPdf=buildReportFromParsedPdf; window.calculatePdfParseConfidence=calculatePdfParseConfidence; window.pdfParserTestCases=pdfParserTestCases; window.runPdfParserTests=runPdfParserTests; window.renderPdfStatus=renderPdfStatus; window.renderPdfError=renderPdfError; window.renderPdfPreview=renderPdfPreview; window.renderParseDebugDetails=renderParseDebugDetails; window.collectParsedPdfPreview=collectParsedPdfPreview; window.handlePastedTextParse=handlePastedTextParse; window.renderOverview=renderOverview; window.renderReports=renderReports; window.renderTrends=renderTrends; window.renderAi=renderAi; window.renderProfile=renderProfile; window.renderUpload=renderUpload; window.bindUploadEvents=bindUploadEvents; window.createEmptyLabItemForm=createEmptyLabItemForm; window.collectUploadFormData=collectUploadFormData; window.validateUploadForm=validateUploadForm; window.saveUploadedReport=saveUploadedReport; window.renderReportDetail=renderReportDetail; window.renderLabItemCard=renderLabItemCard; window.bindReportDetailEvents=bindReportDetailEvents; window.renderExplanationPanel=renderExplanationPanel; window.renderAiInsightCards=renderAiInsightCards; window.renderAiReportCard=renderAiReportCard; window.renderAiInterpretation=renderAiInterpretation; window.renderDevTools=renderDevTools; window.getReportsCount=getReportsCount; window.getChatCount=getChatCount; window.resetReportsToSample=resetReportsToSample; window.clearReportsData=clearReportsData; window.exportReportsJson=exportReportsJson; window.importReportsJson=importReportsJson; window.syncLocalReportsToApi=syncLocalReportsToApi; window.pullApiReportsToLocal=pullApiReportsToLocal; window.refreshAfterDataChange=refreshAfterDataChange;
 window.aiInterpretationState=aiInterpretationState; window.fetchJsonWithTimeout=fetchJsonWithTimeout; window.callAiInterpretApi=callAiInterpretApi; window.requestAiInterpretation=requestAiInterpretation; window.checkAiHealth=checkAiHealth;
 window.renderOverviewItemBreakdown=renderOverviewItemBreakdown; window.bindOverviewStatsEvents=bindOverviewStatsEvents; window.renderTrendPointDetail=renderTrendPointDetail; window.renderTrendTabContent=renderTrendTabContent; window.renderTrendExplanation=renderTrendExplanation; window.analyzeTrendAbnormality=analyzeTrendAbnormality; window.renderTrendAbnormalAnalysis=renderTrendAbnormalAnalysis; window.renderTrendHistory=renderTrendHistory; window.trendPointKey=trendPointKey;
+window.filterReports = filterReports; window.getReportFilterError = getReportFilterError; window.startReportEdit = startReportEdit; window.saveEditedReport = saveEditedReport;
 showScreen('overview');
