@@ -4,3 +4,5 @@
 backend/__pycache__/
 *.pyc
 backend/data/*.db
+.venv/
+backend/data/*.db-*

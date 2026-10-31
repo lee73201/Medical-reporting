@@ -6,6 +6,52 @@
 
 当前版本不接真实 OCR，不做用户登录。前端默认使用浏览器 `localStorage`，也可以在 profile 开发者工具中切换到 API 模式，从本地 FastAPI 后端读取和保存报告数据；AI 解读/对话可通过 FastAPI 后端代理调用 DeepSeek，失败时自动回退到本地规则 mock。
 
+## 本次整理：version5-ui-polish
+
+这是对当前 HTML 项目的增量打磨，不是 Expo 项目的更新。没有修改报告结构、后端 API 或 PDF parser 规则。
+
+- 首页统计默认收起，点击展开，再点同一张卡片收起；患者与日期来自最新报告，不再展示写死的健康评分。
+- 页面持续标明本地/API 数据来源；切换模式不自动同步，也不覆盖另一来源的数据。
+- 使用较克制的灰白、蓝绿色界面，减少装饰渐变和厚阴影，保留移动端布局和底部导航。
+- 趋势节点支持点按、键盘 Enter/空格；移除无效箭头、更多按钮和没有临床依据的风险等级展示。
+- API 加载失败可重新加载；请求有超时，页面不展示原始服务错误。切换模式后丢弃旧请求结果。
+- 手动和解析确认保存期间禁用提交按钮；聊天有等待反馈、防重复发送和本地规则来源标记。
+- Profile 展示存储说明与医疗边界，开发工具默认折叠。同步覆盖后端前需要确认。
+- 修复详情页重复进入后解释事件重复绑定的问题。
+
+**当前目录的实际边界**：本版本没有认证模块或用户隔离，不应当作已经具备 JWT 登录的版本，也不能用于存储真实敏感医疗数据。未新增登录、OCR 或其他大型功能。
+
+### 回归测试
+
+无需前端依赖即可运行：
+
+```bash
+node --check app.js
+node --test tests/frontend.test.cjs
+```
+
+后端测试使用临时 SQLite 数据库，不修改 `backend/data/med_reports.db`，也不调用真实 AI：
+
+```bash
+.venv/bin/python -m pip install httpx
+.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+.venv/bin/python -m compileall -q backend
+```
+
+覆盖统计折叠、local/API 保存与缓存隔离、API 失败/迟到响应、旧数据兼容、聊天防重复与 fallback、AI 历史折叠、PDF parser 原有用例，以及后端 CRUD/CORS/无密钥回退。前端测试使用轻量 DOM stand-in，不能代替浏览器布局验收。
+
+人工验收：在 320px、375px 和桌面宽度下检查首页、录入、列表、详情、趋势、健康助手、我的；确认无横向溢出、底部操作可见，详情解释可反复开合。真实 DeepSeek 成功响应需使用本机环境变量另行验收，不在自动测试中产生调用费用。
+
+本次自测记录（2026-11-01）：
+
+- 前端逻辑测试 14/14、现有 PDF parser 用例 14/14 通过；Node/Python 语法检查通过。
+- 临时数据库 API 测试通过，覆盖报告增删改查、批量导入、CORS 预检和 AI 未配置时的错误响应。
+- 浏览器验证了统计展开/收起、详情解释、趋势节点/历史入口、AI 默认折叠与本地回退、Profile 模式切换与连接检测。
+- 文本 PDF 样例提取到 9 项并进入预览；粘贴文本提取到 3 项，确认后保存成功；手动 GLU 录入与自动填充通过。
+- 核心页面在 320px 窄屏下内容宽度不超过视口；375px 与 1440px 完成截图检查。
+- 停止后端后显示错误和重试入口；重启后可恢复，切回 local 后原本地数据仍在。浏览器日志未发现未捕获 JS 错误。
+- 未配置真实 AI key，未验证真实 DeepSeek 成功响应；未做真实移动设备、辅助技术或生产安全审计。
+
 ## 当前版本状态
 
 当前版本是：
@@ -63,7 +109,10 @@
 
 ```bash
 cd /Users/lee/Documents/doc
-python3 -m http.server 8088 --bind 127.0.0.1
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r backend/requirements.txt
+python -m http.server 8088 --bind 127.0.0.1
 ```
 
 然后访问：
@@ -76,15 +125,22 @@ http://127.0.0.1:8088/index.html
 
 ```bash
 cd /Users/lee/Documents/doc
+source .venv/bin/activate
 export AI_API_KEY="your_deepseek_api_key_here"
 export AI_API_BASE_URL="https://api.deepseek.com"
 export AI_MODEL="deepseek-v4-flash"
-export SSL_CERT_FILE=$(python3 -c "import certifi; print(certifi.where())")
-export REQUESTS_CA_BUNDLE=$SSL_CERT_FILE
-uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
+python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 不要把真实 `AI_API_KEY` 写入代码、README 或提交到 GitHub。可以参考 `.env.example` 保存占位配置。
+
+macOS 如果出现 `CERTIFICATE_VERIFY_FAILED`，可在虚拟环境中安装 `certifi` 并指定证书后重启后端，不要关闭 TLS 校验：
+
+```bash
+python -m pip install certifi
+export SSL_CERT_FILE="$(python -c 'import certifi; print(certifi.where())')"
+export REQUESTS_CA_BUNDLE="$SSL_CERT_FILE"
+```
 
 ## 页面结构说明
 

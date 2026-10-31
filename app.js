@@ -21,11 +21,17 @@ let selectedReportId = getStoredSelectedReportId();
 let selectedTrendItem = '空腹血糖';
 let selectedTrendPointKey = '';
 let trendDetailTab = 'explain';
-let overviewItemFilter = 'abnormal';
+let overviewItemFilter = null;
 let aiMode = 'insights';
 let selectedAiReportId = '';
 let expandedAiReportId = '';
 const aiInterpretationState = {};
+let chatSending = false;
+let chatDraft = '';
+let chatRequestVersion = 0;
+let reportsLoadVersion = 0;
+let profileToolsOpen = false;
+let profileBusy = false;
 
 
 const labReferenceDictionary = [
@@ -226,15 +232,32 @@ const reportService = {
     return this.saveAllReports(reports);
   },
   async requestApi(path, options = {}) {
-    const response = await fetch(`${appConfig.apiBaseUrl}${path}`, {
-      ...options,
-      headers: {
-        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-        ...(options.headers || {})
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
+    try {
+      const response = await fetch(`${appConfig.apiBaseUrl}${path}`, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+          ...(options.headers || {})
+        }
+      });
+      if (!response.ok) {
+        const message = response.status === 401 ? '当前登录状态已失效，请重新登录后再试。'
+          : response.status === 404 ? '未找到这份报告，请刷新后重试。'
+          : response.status === 422 || response.status === 400 ? '报告信息不完整，请核对后重试。'
+          : '后端暂时无法处理请求，请稍后重试。';
+        throw new Error(message);
       }
-    });
-    if (!response.ok) throw new Error(`API ${response.status}: ${await response.text()}`);
-    return response.status === 204 ? null : response.json();
+      return response.status === 204 ? null : await response.json();
+    } catch (error) {
+      if (error.name === 'AbortError') throw new Error('连接超时，请确认后端已启动后重试。');
+      if (error instanceof TypeError) throw new Error('无法连接后端，请确认服务已启动。');
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
   },
   async listReportsAsync() {
     if (appConfig.dataMode === 'local') return this.listReports();
@@ -290,24 +313,36 @@ function setDataMode(mode) {
   try { localStorage.setItem(DATA_MODE_KEY, appConfig.dataMode); } catch {}
   appState.reportsLoaded = false;
   appState.error = null;
+  selectedReportId = '';
+  selectedAiReportId = '';
+  expandedAiReportId = '';
+  overviewItemFilter = null;
+  Object.keys(aiInterpretationState).forEach(key => delete aiInterpretationState[key]);
+  chatRequestVersion += 1;
+  chatSending = false;
   return appConfig.dataMode;
 }
 async function loadReportsToState() {
+  const version = ++reportsLoadVersion;
+  const mode = appConfig.dataMode;
   appState.loading = true;
   appState.error = null;
   try {
-    appState.reports = appConfig.dataMode === 'api'
+    const reports = mode === 'api'
       ? normalizeReports(await reportService.listReportsAsync())
       : reportService.listReports();
+    if (version !== reportsLoadVersion || mode !== appConfig.dataMode) return [];
+    appState.reports = reports;
     appState.reportsLoaded = true;
     return appState.reports;
   } catch (error) {
+    if (version !== reportsLoadVersion || mode !== appConfig.dataMode) return [];
     appState.error = error;
     appState.reports = [];
     appState.reportsLoaded = false;
     return [];
   } finally {
-    appState.loading = false;
+    if (version === reportsLoadVersion) appState.loading = false;
   }
 }
 async function refreshReportsAndRender(targetScreen = getActiveScreenId()) {
@@ -345,7 +380,7 @@ function normalizeReport(report) {
     patient: report?.patient || patient,
     reportType: report?.reportType || '检验报告',
     hospital: report?.hospital || '',
-    date: report?.date || new Date().toISOString().slice(0, 10),
+    date: report?.date || formatDateTime(new Date()).slice(0, 10),
     items: Array.isArray(report?.items) ? report.items.map(normalizeLabItem) : []
   };
   normalizedReport.patient = {
@@ -374,7 +409,7 @@ function normalizeLabItem(item) {
     refLow,
     refHigh,
     refText,
-    refSource: item?.refSource || (defaults ? 'dictionary' : 'manual'),
+    refSource: ['dictionary', 'manual', 'report', 'unknown'].includes(item?.refSource) ? item.refSource : item?.refSource ? 'unknown' : (defaults ? 'dictionary' : 'manual'),
     status: item?.status && Number.isFinite(refLow) && Number.isFinite(refHigh) ? calculateItemStatus(value, refLow, refHigh) : (item?.status || calculateItemStatus(value, refLow, refHigh))
   };
 }
@@ -582,18 +617,21 @@ function formatDateTime(date) {
 }
 
 async function showScreen(rawId) {
-  const id = rawId === 'upload' ? 'upload' : rawId;
+  const id = screens.some(screen => screen.id === rawId) ? rawId : 'overview';
+  if (id === 'overview' && getActiveScreenId() !== 'overview') overviewItemFilter = null;
   screens.forEach(s => { s.classList.toggle('active', s.id === id); if (s.id === id) s.scrollTop = 0; });
   navButtons.forEach(btn => {
     const target = btn.dataset.go;
     const active = target === id || (target === 'reports' && ['upload','report-detail'].includes(id)) || (target === 'ai-insights' && id === 'ai-insights');
     btn.classList.toggle('active', active);
+    if (active) btn.setAttribute('aria-current', 'page');
+    else btn.removeAttribute('aria-current');
   });
   if (appConfig.dataMode === 'api' && !appState.reportsLoaded && !['upload'].includes(id)) {
     renderAppStatus(id, 'loading');
     await loadReportsToState();
   }
-  render(id);
+  if (getActiveScreenId() === id) render(id);
 }
 
 document.addEventListener('click', event => {
@@ -612,13 +650,18 @@ document.addEventListener('click', event => {
   showScreen(trigger.dataset.go);
 });
 
-function topBar(title, back = '', right = '') {
-  return `<header class="app-top"><button class="icon-btn" ${back ? `data-go="${back}"` : ''}>${back ? '<svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>' : ''}</button><h1>${title}</h1><button class="icon-btn">${right}</button></header>`;
+function topBar(title, back = '') {
+  return `<header class="app-top">${back ? `<button class="icon-btn" data-go="${esc(back)}" aria-label="返回"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>` : '<span></span>'}<h1>${esc(title)}</h1><span class="header-mark" aria-hidden="true">医检</span></header>${renderDataSource()}`;
+}
+function renderDataSource() {
+  const api = appConfig.dataMode === 'api';
+  return `<div class="data-source-strip"><span class="source-dot ${api ? 'api' : ''}"></span><span>${api ? 'API 数据' : '本地数据'}</span><small>${api ? '来自当前后端服务' : '仅保存在此浏览器'}</small><button data-go="profile" aria-label="管理数据模式">管理</button></div>`;
 }
 function renderEmptyState(message, actionText = '', actionTarget = '') {
   return `<article class="card empty-state"><p>${esc(message)}</p>${actionText ? `<button class="primary-btn" data-go="${esc(actionTarget)}">${esc(actionText)}</button>` : ''}</article>`;
 }
 function render(id) {
+  document.getElementById(id)?.setAttribute('aria-busy', 'false');
   if (appConfig.dataMode === 'api' && appState.error && !['upload', 'profile'].includes(id)) {
     renderAppStatus(id, 'error');
     return;
@@ -630,34 +673,44 @@ function render(id) {
   if (id === 'trends') renderTrends();
   if (id === 'ai-insights') renderAi();
   if (id === 'profile') renderProfile();
+  const root = document.getElementById(id);
+  if (root && !root.querySelector('.data-source-strip')) root.querySelector('.app-top')?.insertAdjacentHTML('afterend', renderDataSource());
 }
 function renderAppStatus(id, type) {
   const root = document.querySelector(`#${id}`);
   if (!root) return;
   const loading = type === 'loading';
   const message = loading ? '正在从后端加载报告数据…' : '后端连接失败，请确认 FastAPI 服务已启动。';
-  root.innerHTML = `${topBar(root.dataset.title || '加载数据', 'overview')}<article class="card app-state-card ${type}"><strong>${esc(message)}</strong>${appState.error ? `<p>${esc(appState.error.message)}</p>` : ''}<button class="outline-btn" data-go="profile">前往数据模式设置</button></article>`;
+  root.setAttribute('aria-busy', String(loading));
+  root.innerHTML = `${topBar(root.dataset.title || '加载数据', 'overview')}<article class="card app-state-card ${type}" role="status">${loading ? '<span class="pdf-spinner" aria-hidden="true"></span>' : ''}<strong>${esc(message)}</strong><p>${loading ? '数据加载完成后将自动显示。' : '本地报告没有被覆盖，可以重试或切回本地模式。'}</p>${!loading ? '<button class="primary-btn" data-retry-reports>重新加载</button><button class="outline-btn" data-go="profile">管理数据模式</button>' : ''}</article>`;
+  root.querySelector('[data-retry-reports]')?.addEventListener('click', async () => {
+    renderAppStatus(id, 'loading');
+    await loadReportsToState();
+    if (getActiveScreenId() === id) { root.setAttribute('aria-busy', 'false'); render(id); }
+  });
 }
 function renderOverview() {
   const root = document.querySelector('#overview');
   const { report, total, normal, abnormal } = getOverviewStats();
-  const trend = getTrendData('空腹血糖');
+  const metricName = report?.items.some(item => item.name === '空腹血糖') ? '空腹血糖' : report?.items[0]?.name;
+  const trend = metricName ? getTrendData(metricName) : [];
   const latest = trend.at(-1);
   const bad = getAbnormalItems(report).slice(0, 3);
-  root.innerHTML = `${topBar('检验概览', '', '<svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>')}
+  const currentPatient = report?.patient;
+  root.innerHTML = `${topBar('检验概览')}
     <section class="daily-hero">
-      <div><p>Good Evening</p><h2>今天身体状态如何？</h2></div>
-      <button class="hero-filter" data-go="upload"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+      <div><p>报告档案</p><h2>近期检查概览</h2></div>
+      <button class="hero-filter" data-go="upload" aria-label="新增报告" title="新增报告"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
     </section>
-    <article class="card patient-card rich-card"><div class="avatar">👨🏻‍🦳</div><div><div class="patient-name">${patient.name}<span class="age-pill">${patient.age}岁</span></div><div class="patient-id">ID: ${patient.patientId}</div></div><div class="score-ring"><span>健康评分<br>82分</span></div></article>
-    <div class="stats"><button class="card stat-card ${overviewItemFilter === 'all' ? 'active' : ''}" data-overview-filter="all"><strong>${total}</strong><span>总项目</span></button><button class="card stat-card ${overviewItemFilter === 'normal' ? 'active' : ''}" data-overview-filter="normal"><strong>${normal}</strong><span>正常</span></button><button class="card stat-card ${overviewItemFilter === 'abnormal' ? 'active' : ''}" data-overview-filter="abnormal"><strong class="red">${abnormal}</strong><span>异常</span></button></div>
+    ${report ? `<article class="patient-card rich-card"><div class="avatar" aria-hidden="true">${esc(currentPatient.name.slice(0, 1))}</div><div><div class="patient-name">${esc(currentPatient.name)}<span class="age-pill">${esc(currentPatient.age)}岁</span></div><div class="patient-id">患者 ID ${esc(currentPatient.patientId)}</div></div><span class="patient-record-label">最新报告<br><strong>${esc(report.date)}</strong></span></article><div class="overview-caption"><span>${esc(report.reportType)}</span><span>${esc(report.hospital)}</span></div>` : ''}
+    <div class="stats">${[['all', total, '总项目'], ['normal', normal, '正常'], ['abnormal', abnormal, '异常']].map(([filter, count, label]) => `<button class="card stat-card ${overviewItemFilter === filter ? 'active' : ''}" data-overview-filter="${filter}" aria-expanded="${overviewItemFilter === filter}" ${report ? '' : 'disabled'}><strong class="${filter === 'abnormal' ? 'red' : filter === 'normal' ? 'green' : ''}">${count}</strong><span>${label}<small aria-hidden="true">${overviewItemFilter === filter ? '−' : '+'}</small></span></button>`).join('')}</div>
     ${renderOverviewItemBreakdown(report, overviewItemFilter)}
-    <article class="card section-card trend-summary-card"><div class="section-head"><h2>趋势摘要</h2><button data-go="trends" data-item-name="空腹血糖">全部指标 ></button></div><div class="trend-summary-top"><div><div class="metric-label">空腹血糖 (mmol/L)</div><div class="metric-value"><strong>${latest?.value ?? '-'}</strong><span class="badge ${latest?.status || 'normal'}">${statusText(latest?.status || 'normal')}</span></div></div><div class="range-pill">参考 ${latest ? `${latest.refLow}-${latest.refHigh}` : '3.9-6.1'}</div></div>${renderOverviewChart(trend)}</article>
-    ${report ? `<article class="card section-card"><div class="section-head"><h2>近期异常指标</h2><button data-go="reports">查看全部 ></button></div><div class="abnormal-list">${bad.length ? bad.map(i => `<button class="abnormal-row" data-go="trends" data-item-name="${esc(i.name)}"><strong>${esc(i.name)}</strong><span>${formatValue(i)}</span><small class="badge ${i.status}">${statusText(i.status)}</small></button>`).join('') : '<div class="empty-state compact">当前最新报告未发现明显异常指标。</div>'}</div><button class="primary-btn" style="margin-top:16px" data-go="upload">＋ 上传新报告</button></article>` : renderEmptyState('暂无报告数据，请先上传或录入一份检验报告。', '上传新报告', 'upload')}`;
+    ${latest ? `<article class="card section-card trend-summary-card"><div class="section-head"><h2>趋势摘要</h2><button data-go="trends" data-item-name="${esc(metricName)}">查看趋势 →</button></div><div class="trend-summary-top"><div><div class="metric-label">${esc(metricName)} <small>${esc(latest.unit)}</small></div><div class="metric-value"><strong class="${latest.status === 'normal' ? 'green' : 'red'}">${esc(latest.value)}</strong><span class="badge ${latest.status}">${statusText(latest.status)}</span></div></div><div class="range-pill">参考 ${esc(latest.refText)}</div></div>${renderOverviewChart(trend)}</article>` : ''}
+    ${report ? `<article class="card section-card"><div class="section-head"><h2>近期异常指标</h2><button data-go="reports">查看全部 ></button></div><div class="abnormal-list">${bad.length ? bad.map(i => `<button class="abnormal-row" data-go="trends" data-item-name="${esc(i.name)}"><strong>${esc(i.name)}</strong><span>${esc(formatValue(i))}</span><small class="badge ${i.status}">${statusText(i.status)}</small></button>`).join('') : '<div class="empty-state compact">当前最新报告未发现明显异常指标。</div>'}</div><button class="primary-btn" style="margin-top:16px" data-go="upload">＋ 上传新报告</button></article>` : renderEmptyState('暂无报告数据，请先上传或录入一份检验报告。', '上传新报告', 'upload')}`;
   bindOverviewStatsEvents(root, report);
 }
 function renderOverviewItemBreakdown(report, filter = 'abnormal') {
-  if (!report) return '';
+  if (!report || !filter) return '';
   const items = report.items.filter(item => filter === 'all' ? true : filter === 'normal' ? item.status === 'normal' : item.status !== 'normal');
   const title = filter === 'all' ? '全部项目' : filter === 'normal' ? '正常项目' : '异常项目';
   const highCount = report.items.filter(item => item.status === 'high').length;
@@ -670,7 +723,7 @@ function renderOverviewBreakdownItem(item, index) {
 function bindOverviewStatsEvents(root, report) {
   root.querySelectorAll('[data-overview-filter]').forEach(button => {
     button.onclick = () => {
-      overviewItemFilter = button.dataset.overviewFilter || 'abnormal';
+      overviewItemFilter = overviewItemFilter === button.dataset.overviewFilter ? null : button.dataset.overviewFilter;
       renderOverview();
     };
   });
@@ -693,7 +746,7 @@ function bindOverviewStatsEvents(root, report) {
 }
 function renderUpload() {
   const root = document.querySelector('#upload');
-  const today = new Date().toISOString().slice(0, 10);
+  const today = formatDateTime(new Date()).slice(0, 10);
   root.innerHTML = `${topBar('上传报告', 'reports')}
     <article class="card upload-hero pdf-upload-card"><div><div class="cloud"><svg viewBox="0 0 24 24"><path d="M12 19V9M8 13l4-4 4 4M20 17.5A4.5 4.5 0 0 0 15.5 13h-.7A6 6 0 1 0 5 17.5"/></svg></div><h2>上传报告文件</h2><p>支持文本型 PDF；扫描件和图片型 PDF 暂不支持</p><button class="primary-btn" id="choose-file" type="button" style="width:118px;min-height:38px">选择 PDF</button><input id="pdf-file-input" type="file" accept="application/pdf,.pdf" hidden><p style="margin-top:14px">PDF 仅在浏览器本地解析，不上传服务器。OCR 解析将在后续版本加入。</p></div></article>
     <article class="card paste-parse-card"><h2>粘贴报告文本解析</h2><p>可把文本型 PDF 中复制出的报告内容粘贴到这里，使用同一套解析规则生成预览。</p><textarea id="paste-report-text" rows="7" placeholder="例如：GLU 7.4 mmol/L 3.9-6.1"></textarea><button class="outline-btn" id="parse-pasted-text" type="button">解析粘贴文本</button><div class="form-message" id="paste-parse-message" aria-live="polite"></div></article>
@@ -747,20 +800,26 @@ function bindUploadEvents(root) {
   });
   root.querySelector('#report-form').onsubmit = async (event) => {
     event.preventDefault();
+    const submit = event.currentTarget.querySelector('[type="submit"]');
+    if (submit.disabled) return;
     const result = collectUploadFormData(root);
     if (result.errors.length) {
       showUploadMessage(message, result.errors[0], 'error');
       return;
     }
+    submit.disabled = true;
+    submit.textContent = '正在保存…';
     try {
       const saved = await saveUploadedReport(result.report);
       selectedReportId = saved.id;
       setStoredSelectedReportId(selectedReportId);
       selectedTrendItem = saved.items[0]?.name || selectedTrendItem;
       showUploadMessage(message, '报告保存成功', 'success');
-      setTimeout(() => showScreen('overview'), 600);
+      setTimeout(() => { if (getActiveScreenId() === 'upload') showScreen('overview'); }, 600);
     } catch (error) {
       showUploadMessage(message, `保存失败：${error.message}`, 'error');
+      submit.disabled = false;
+      submit.textContent = '保存报告';
     }
   };
 }
@@ -985,7 +1044,7 @@ function parsePdfReportText(text) {
 }
 function parseReportMetaFromText(text) {
   const lines = normalizePdfText(text).split('\n');
-  const today = new Date().toISOString().slice(0, 10);
+  const today = formatDateTime(new Date()).slice(0, 10);
   const hospital = lines.find(line => /医院|体检中心|医学检验|检验中心/.test(line)) || '未知机构';
   const joined = lines.join(' ');
   const reportType = /生化/.test(joined) ? '生化检验' : /血常规/.test(joined) ? '血常规' : /尿常规/.test(joined) ? '尿常规' : /检验报告/.test(joined) ? '检验报告' : '检验报告';
@@ -1056,7 +1115,7 @@ function buildReportFromParsedPdf(parsedResult) {
     patient: parsedResult.patient || patient,
     reportType: parsedResult.reportType || '检验报告',
     hospital: parsedResult.hospital || '未知机构',
-    date: parsedResult.date || new Date().toISOString().slice(0, 10),
+    date: parsedResult.date || formatDateTime(new Date()).slice(0, 10),
     items: parsedResult.items || []
   });
 }
@@ -1143,7 +1202,7 @@ function renderPdfPreview(root, parsed) {
     <div class="pdf-meta-grid">
       <label>报告类型<input name="pdfReportType" value="${esc(parsed.reportType || '检验报告')}"></label>
       <label>医院名称<input name="pdfHospital" value="${esc(parsed.hospital || '未知机构')}"></label>
-      <label>报告日期<input name="pdfDate" type="date" value="${esc(parsed.date || new Date().toISOString().slice(0, 10))}"></label>
+      <label>报告日期<input name="pdfDate" type="date" value="${esc(parsed.date || formatDateTime(new Date()).slice(0, 10))}"></label>
       <label>患者姓名<input name="pdfPatientName" value="${esc(parsed.patient?.name || patient.name)}"></label>
       <label>患者年龄<input name="pdfPatientAge" type="number" value="${esc(parsed.patient?.age ?? patient.age)}"></label>
       <label>患者 ID<input name="pdfPatientId" value="${esc(parsed.patient?.patientId || patient.patientId)}"></label>
@@ -1196,21 +1255,27 @@ function bindPdfPreviewEvents(root) {
   });
   root.querySelector('[data-pdf-discard]').onclick = () => root.replaceChildren();
   root.querySelector('[data-pdf-save]').onclick = async () => {
+    const submit = root.querySelector('[data-pdf-save]');
+    if (submit.disabled) return;
     const message = root.querySelector('[data-pdf-message]');
     const result = collectParsedPdfPreview(root);
     if (result.errors.length) {
       showUploadMessage(message, result.errors[0], 'error');
       return;
     }
+    submit.disabled = true;
+    submit.textContent = '正在保存…';
     try {
       const saved = await saveUploadedReport(result.report);
       selectedReportId = saved.id;
       selectedTrendItem = saved.items[0]?.name || selectedTrendItem;
       setStoredSelectedReportId(selectedReportId);
       showUploadMessage(message, '报告保存成功', 'success');
-      setTimeout(() => showScreen('overview'), 600);
+      setTimeout(() => { if (getActiveScreenId() === 'upload') showScreen('overview'); }, 600);
     } catch (error) {
       showUploadMessage(message, `保存失败：${error.message}`, 'error');
+      submit.disabled = false;
+      submit.textContent = '确认保存解析结果';
     }
   };
 }
@@ -1253,7 +1318,7 @@ function collectParsedPdfPreview(root) {
 function renderReports() {
   const root = document.querySelector('#reports');
   const reports = [...getReports()].sort((a,b)=>b.date.localeCompare(a.date));
-  root.innerHTML = `${topBar('报告列表', '', '<svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>')}${reports.length ? `<div class="report-list">${reports.map(r => `<article class="card report-card"><div class="report-title"><div class="flask-icon">⚗</div><div><h2>${esc(r.reportType)}</h2><p>${esc(r.hospital)}</p></div><div class="report-date">${esc(r.date)}</div></div><div class="report-alert">总项目 ${r.items.length} 项 · 异常项目 ${getAbnormalItems(r).length} 项</div><div class="report-actions"><button class="outline-btn" data-go="report-detail" data-report-id="${r.id}">查看详情</button><button class="outline-btn" data-go="ai-insights" data-report-id="${r.id}">AI 解读</button><button class="outline-btn" data-go="trends" data-item-name="${esc(r.items[0]?.name || '')}">趋势分析</button></div></article>`).join('')}</div>` : renderEmptyState('暂无报告数据，请先上传或录入一份检验报告。', '上传新报告', 'upload')}<button class="float-add" data-go="upload">＋</button>`;
+  root.innerHTML = `${topBar('报告列表')}${reports.length ? `<div class="report-list">${reports.map(r => `<article class="card report-card"><div class="report-title"><div class="flask-icon">⚗</div><div><h2>${esc(r.reportType)}</h2><p>${esc(r.hospital)}</p></div><div class="report-date">${esc(r.date)}</div></div><div class="report-alert">总项目 ${r.items.length} 项 · 异常项目 ${getAbnormalItems(r).length} 项</div><div class="report-actions"><button class="outline-btn" data-go="report-detail" data-report-id="${esc(r.id)}">查看详情</button><button class="outline-btn" data-go="ai-insights" data-report-id="${esc(r.id)}">AI 解读</button><button class="outline-btn" data-go="trends" data-item-name="${esc(r.items[0]?.name || '')}">趋势分析</button></div></article>`).join('')}</div>` : renderEmptyState('暂无报告数据，请先上传或录入一份检验报告。', '上传新报告', 'upload')}<button class="float-add" data-go="upload" aria-label="新增报告" title="新增报告">＋</button>`;
 }
 function renderDetail() { renderReportDetail(); }
 function renderReportDetail() {
@@ -1279,7 +1344,7 @@ function renderLabItemCard(item, index) {
   </article>`;
 }
 function bindReportDetailEvents(root, report) {
-  root.addEventListener('click', event => {
+  root.onclick = event => {
     const button = event.target.closest('[data-explain-index]');
     if (!button) return;
     const index = Number(button.dataset.explainIndex);
@@ -1294,7 +1359,8 @@ function bindReportDetailEvents(root, report) {
     }
     panel.hidden = !willOpen;
     button.textContent = willOpen ? '收起解释' : '查看解释';
-  });
+    button.setAttribute('aria-expanded', String(willOpen));
+  };
 }
 function renderExplanationPanel(info) {
   return `<div class="explanation-title"><strong>${esc(info.title)}</strong><span>${esc(info.category)}</span></div>
@@ -1318,19 +1384,19 @@ function renderTrends() {
   const latest = data.at(-1);
   const previous = data.at(-2);
   const delta = previous ? latest.value - previous.value : 0;
-  const pct = previous && previous.value ? (delta / previous.value * 100) : 0;
+  const pct = previous && previous.value !== 0 ? (delta / Math.abs(previous.value) * 100) : null;
   const meta = getTrendMeta(selectedTrendItem, latest);
   if (!selectedTrendPointKey || !data.some(point => trendPointKey(point) === selectedTrendPointKey)) selectedTrendPointKey = trendPointKey(latest);
   const selectedPoint = data.find(point => trendPointKey(point) === selectedTrendPointKey) || latest;
   document.querySelector('#trends').innerHTML = `${topBar('趋势分析', 'reports')}
     <section class="trend-hero-panel ${latest?.status === 'normal' ? 'ok' : 'warn'}">
-      <div class="trend-hero-head"><button class="ghost-back" data-go="reports">‹</button><label class="hero-metric-select"><select id="trend-select">${names.map(n=>`<option ${n===selectedTrendItem?'selected':''}>${esc(n)}</option>`).join('')}</select></label><button class="ghost-more">•••</button></div>
-      <div class="trend-number-row"><div><strong>${latest?.value ?? '-'}</strong><span>${esc(latest?.unit || '')}</span><p>${latest?.date || ''}</p></div><div class="trend-delta"><b>${delta >= 0 ? '↑' : '↓'} ${Math.abs(pct).toFixed(2)}%</b><small>较上次</small></div></div>
-      <article class="card trend-chart-card"><div class="chart-period"><button>‹</button><span>${data[0]?.date.replaceAll('-', '') || ''} – ${latest?.date.replaceAll('-', '') || ''}</span><button>›</button></div>${renderChart(data, true)}</article>
+      <div class="trend-hero-head"><label class="hero-metric-select"><span class="field-caption">检验指标</span><select id="trend-select" aria-label="选择检验指标">${names.map(n=>`<option ${n===selectedTrendItem?'selected':''}>${esc(n)}</option>`).join('')}</select></label></div>
+      <div class="trend-number-row"><div><strong>${latest?.value ?? '-'}</strong><span>${esc(latest?.unit || '')}</span><p>${latest?.date || ''}</p></div><div class="trend-delta"><b>${pct === null ? '暂无' : `${delta === 0 ? '—' : delta > 0 ? '↑' : '↓'} ${Math.abs(pct).toFixed(2)}%`}</b><small>${previous ? '较上次记录' : '暂无对比记录'}</small></div></div>
+      <article class="trend-chart-card"><div class="chart-period"><span>${data[0]?.date || ''} — ${latest?.date || ''}</span></div>${renderChart(data, true)}</article>
     </section>
     ${renderTrendPointDetail(selectedPoint, data)}
     <div class="trend-tabs"><button class="${trendDetailTab === 'explain' ? 'active' : ''}" data-trend-tab="explain">名词解释</button><button class="${trendDetailTab === 'analysis' ? 'active' : ''}" data-trend-tab="analysis">异常分析</button><button class="${trendDetailTab === 'history' ? 'active' : ''}" data-trend-tab="history">历史记录</button></div>
-    <article class="card risk-card"><h2>状态评估</h2><p>正常范围区间 <strong>${latest ? `${latest.refLow}~${latest.refHigh} ${latest.unit}` : '-'}</strong></p>${renderRiskScale(latest)}<div class="risk-labels"><span>理想</span><span>低风险</span><span>中风险</span><span>高风险</span></div></article>
+    <section class="reference-context"><span class="status-badge ${latest.status}">${statusText(latest.status)}</span><p>参考范围 ${esc(formatRange(latest))}<small>参考范围以原报告为准，不等同于疾病风险分级。</small></p></section>
     ${renderTrendTabContent(trendDetailTab, selectedTrendItem, data, meta)}
     <button class="primary-btn add-data-btn" data-go="upload">添加数据</button>`;
   document.querySelector('#trend-select').onchange = e => { selectedTrendItem = e.target.value; selectedTrendPointKey = ''; trendDetailTab = 'explain'; renderTrends(); };
@@ -1342,11 +1408,15 @@ function trendPointKey(point) {
 function bindTrendInteractions(data) {
   const root = document.querySelector('#trends');
   root.querySelectorAll('[data-trend-index]').forEach(target => {
-    target.addEventListener('click', () => {
+    const selectPoint = () => {
       const point = data[Number(target.dataset.trendIndex)];
       if (!point) return;
       selectedTrendPointKey = trendPointKey(point);
       renderTrends();
+    };
+    target.addEventListener('click', selectPoint);
+    target.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectPoint(); }
     });
   });
   root.querySelectorAll('[data-trend-tab]').forEach(button => {
@@ -1411,7 +1481,7 @@ function renderAi() {
   const chatReport = getCurrentChatReport();
   const messages = getChatHistory();
   const root = document.querySelector('#ai-insights');
-  root.innerHTML = `${topBar('AI 解读', 'overview')}<div class="ai-tabs"><button class="${aiMode==='insights'?'active':''}" id="tab-insights">AI 解读</button><button class="${aiMode==='chat'?'active':''}" id="tab-chat">AI 对话</button></div>${aiMode==='insights' ? renderAiInsightCards(reports) : renderChatPanel(chatReport, messages)}`;
+  root.innerHTML = `${topBar('健康助手', 'overview')}<div class="ai-tabs"><button class="${aiMode==='insights'?'active':''}" aria-pressed="${aiMode==='insights'}" id="tab-insights">AI 解读</button><button class="${aiMode==='chat'?'active':''}" aria-pressed="${aiMode==='chat'}" id="tab-chat">AI 对话</button></div>${aiMode==='insights' ? renderAiInsightCards(reports) : renderChatPanel(chatReport, messages)}`;
   document.querySelector('#tab-insights').onclick = () => { aiMode = 'insights'; selectedAiReportId = ''; expandedAiReportId = ''; renderAi(); };
   document.querySelector('#tab-chat').onclick = () => { aiMode = 'chat'; renderAi(); };
   root.querySelectorAll('[data-ai-toggle]').forEach(button => {
@@ -1429,34 +1499,57 @@ function renderAi() {
     button.onclick = () => sendChatQuestion(button.dataset.quickQuestion);
   });
   const clearButton = root.querySelector('#clear-chat');
-  if (clearButton) clearButton.onclick = () => { clearChatHistory(); renderAi(); };
+  if (clearButton) clearButton.onclick = () => {
+    if (chatSending || !confirm('确认清空此浏览器中的聊天记录？')) return;
+    clearChatHistory(); renderAi();
+  };
+  if (form) form.question.oninput = () => { chatDraft = form.question.value; };
   if (form) form.onsubmit = e => { e.preventDefault(); sendChatQuestion(form.question.value); };
 }
 async function requestAiInterpretation(reportId) {
+  if (aiInterpretationState[reportId]?.loading) return;
+  const mode = appConfig.dataMode;
   const report = getReports().find(item => item.id === reportId);
   if (!report) return;
-  aiInterpretationState[reportId] = { loading: true, error: '', source: 'mock', result: generateAiInterpretation(report) };
+  const requestState = { loading: true, error: '', source: 'mock', result: generateAiInterpretation(report) };
+  aiInterpretationState[reportId] = requestState;
   renderAi();
   const result = await callAiInterpretApi(report);
+  if (mode !== appConfig.dataMode || aiInterpretationState[reportId] !== requestState) return;
   aiInterpretationState[reportId] = result
     ? { loading: false, error: '', source: 'ai', result }
     : { loading: false, error: 'AI 服务暂不可用，已显示本地规则解读。', source: 'mock', result: generateAiInterpretation(report) };
-  renderAi();
+  if (getActiveScreenId() === 'ai-insights') renderAi();
 }
 async function sendChatQuestion(rawQuestion) {
   const question = String(rawQuestion || '').trim();
-  if (!question) return;
+  if (!question || chatSending) return;
   const report = getCurrentChatReport();
-  addChatMessage('user', question);
-  const history = getChatHistory();
-  const apiReply = await callAiChatApi(question, report, history);
-  if (apiReply) addChatMessage('assistant', apiReply, 'ai');
-  else addChatMessage('assistant', generateMockChatReply(question, report), 'mock');
-  renderAi();
+  if (!report) return;
+  const version = ++chatRequestVersion;
+  chatSending = true;
+  chatDraft = '';
+  try {
+    addChatMessage('user', question);
+    renderAi();
+    const history = getChatHistory();
+    const apiReply = await callAiChatApi(question, report, history);
+    if (version !== chatRequestVersion) return;
+    if (apiReply) addChatMessage('assistant', withDisclaimer(apiReply), 'ai');
+    else addChatMessage('assistant', generateMockChatReply(question, report), 'mock');
+  } catch {
+    showNotice('聊天记录保存失败，请检查浏览器存储空间后重试。');
+  } finally {
+    if (version === chatRequestVersion) chatSending = false;
+    if (getActiveScreenId() === 'ai-insights' && aiMode === 'chat') {
+      renderAi();
+      document.querySelector('#chat-form input')?.focus();
+    }
+  }
 }
 function renderChatPanel(report, messages) {
-  if (!report) return '<article class="card ai-empty-state chat-empty-state">暂无报告数据，请先上传或录入一份检验报告。</article>';
-  return `${renderChatContextCard(report)}${renderQuickQuestions()}<div class="chat-head-row"><h2>对话记录</h2><button class="chat-clear-btn" id="clear-chat" type="button">清空聊天</button></div>${renderChatMessages(messages)}<form class="chat-input" id="chat-form"><input placeholder="可以问我某个指标是什么意思，例如：空腹血糖严重吗？" name="question" autocomplete="off"><button>发送</button></form>`;
+  if (!report) return renderEmptyState('暂无报告数据，请先上传或录入一份检验报告。', '录入报告', 'upload');
+  return `${renderChatContextCard(report)}<p class="chat-safety-note">AI 仅供健康科普参考，不构成诊断或治疗建议。服务不可用时使用本地规则。</p>${renderQuickQuestions()}<div class="chat-head-row"><h2>对话记录</h2><button class="chat-clear-btn" id="clear-chat" type="button" ${chatSending || !messages.length ? 'disabled' : ''}>清空聊天</button></div>${renderChatMessages(messages)}${chatSending ? '<p class="chat-pending" role="status"><span class="pdf-spinner" aria-hidden="true"></span>正在理解这份报告…</p>' : ''}<form class="chat-input" id="chat-form"><input placeholder="询问指标含义、异常或复查" aria-label="健康问题" name="question" value="${esc(chatDraft)}" autocomplete="off" maxlength="2000" ${chatSending ? 'disabled' : ''}><button type="submit" ${chatSending ? 'disabled' : ''}>${chatSending ? '等待中' : '发送'}</button></form>`;
 }
 function renderChatContextCard(report) {
   const normalizedReport = normalizeReport(report);
@@ -1465,11 +1558,11 @@ function renderChatContextCard(report) {
 }
 function renderQuickQuestions() {
   const questions = ['这份报告有什么异常？', '我的空腹血糖严重吗？', '低密度脂蛋白是什么意思？', '我需要复查吗？'];
-  return `<div class="quick-question-row">${questions.map(question => `<button type="button" data-quick-question="${esc(question)}">${esc(question)}</button>`).join('')}</div>`;
+  return `<div class="quick-question-row">${questions.map(question => `<button type="button" data-quick-question="${esc(question)}" ${chatSending ? 'disabled' : ''}>${esc(question)}</button>`).join('')}</div>`;
 }
 function renderChatMessages(messages) {
   if (!messages.length) return '<div class="chat-thread"><div class="chat-empty-state">还没有对话。你可以直接提问，或点击上方快捷问题。</div></div>';
-  return `<div class="chat-thread">${messages.map(message => `<div class="message ${message.role === 'user' ? 'user' : 'assistant'}">${message.role === 'assistant' ? '<div class="robot" style="width:28px;height:28px;font-size:16px">🤖</div>' : ''}<div><div class="bubble">${esc(message.content)}${message.role === 'assistant' && message.source ? `<span class="ai-source-chip ${message.source}">${message.source === 'ai' ? 'AI' : '本地规则'}</span>` : ''}</div><div class="msg-time">${esc(message.time)}</div></div></div>`).join('')}</div>`;
+  return `<div class="chat-thread">${messages.map(message => `<div class="message ${message.role === 'user' ? 'user' : 'assistant'}">${message.role === 'assistant' ? '<div class="assistant-mark" aria-hidden="true">医检</div>' : ''}<div><div class="bubble">${esc(message.content)}${message.role === 'assistant' && message.source ? `<span class="ai-source-chip ${message.source}">${message.source === 'ai' ? 'AI 生成' : '本地规则'}</span>` : ''}</div><div class="msg-time">${esc(message.time)}</div></div></div>`).join('')}</div>`;
 }
 function renderAiInsightCards(reports) {
   if (!reports.length) return '<article class="card ai-empty-state">暂无报告数据，请先上传或录入一份检验报告。</article>';
@@ -1507,23 +1600,27 @@ function renderAiInterpretation(interpretation) {
 }
 function renderProfile() {
   const root = document.querySelector('#profile');
-  root.innerHTML = `${topBar('我的', 'overview')}<article class="card profile-empty">个人中心模块待接入账号系统。</article>${renderDevTools()}`;
+  const api = appConfig.dataMode === 'api';
+  root.innerHTML = `${topBar('我的', 'overview')}<section class="profile-intro"><span class="profile-monogram" aria-hidden="true">医检</span><div><h2>我的报告空间</h2><p>${getReportsCount()} 份报告 · ${api ? '后端存储' : '本地存储'}</p></div><span class="version-label">Web</span></section>
+    <section class="profile-section"><h2>数据与存储</h2><div class="data-mode-row"><span>当前数据来源</span><strong class="mode-badge ${appConfig.dataMode}">${api ? 'API 模式' : '本地模式'}</strong></div><p class="storage-description">${api ? '报告由当前 FastAPI 服务保存。切换模式不会自动迁移数据。' : '报告只保存在当前浏览器，不会自动同步。清理浏览器数据会丢失报告，请定期导出备份。'}</p><div class="mode-switch-actions"><button class="outline-btn" id="switch-local-mode" ${api ? '' : 'disabled'}>本地模式</button><button class="outline-btn" id="switch-api-mode" ${api ? 'disabled' : ''}>API 模式</button></div><p class="profile-privacy">本地演示与当前无鉴权后端均不适合存储真实敏感医疗信息。</p></section>
+    <section class="profile-section"><h2>使用边界</h2><p>参考范围以原报告为准。解析后请核对项目、单位与参考值。</p><p>AI 仅供健康科普参考，不构成诊断或治疗建议。</p></section>${renderDevTools()}<div class="form-message" id="profile-message" role="status" aria-live="polite"></div>`;
+  const details = root.querySelector('.dev-tools-disclosure');
+  details.ontoggle = () => { profileToolsOpen = details.open; };
   bindProfileEvents(root);
+  if (profileBusy) root.querySelectorAll('button, input').forEach(control => { control.disabled = true; });
 }
 function renderDevTools() {
   const reports = getReports();
   const latest = getLatestReport();
   const bad = getAbnormalItems(latest).length;
   const clearLabel = appConfig.dataMode === 'api' ? '清空后端报告' : '清空本地报告';
-  return `<article class="card dev-tools-card"><h2>开发者调试工具</h2><p class="dev-warning">该区域仅用于当前 MVP 本地测试，生产环境不应使用 localStorage 保存敏感医疗数据。</p>
+  return `<details class="dev-tools-disclosure" ${profileToolsOpen ? 'open' : ''}><summary>开发者工具 <span>连接、备份与迁移</span></summary><div class="dev-tools-card"><p class="dev-warning">清空、恢复和导入会覆盖当前数据，请先备份。</p>
     <section class="data-mode-panel">
       <div class="data-mode-row"><span>当前使用</span><strong class="mode-badge ${appConfig.dataMode}">${appConfig.dataMode === 'api' ? 'API 模式' : '本地模式'}</strong></div>
       <div class="data-mode-row"><span>API 地址</span><strong>${esc(appConfig.apiBaseUrl)}</strong></div>
       <div class="data-mode-row"><span>API 健康状态</span><strong>${apiHealthText(appState.apiHealth)}</strong></div>
       <div class="dev-actions mode-actions">
         <button class="outline-btn" type="button" id="check-api-health">检测后端连接</button>
-        <button class="outline-btn" type="button" id="switch-api-mode">切换到 API 模式</button>
-        <button class="outline-btn" type="button" id="switch-local-mode">切换到本地模式</button>
       </div>
     </section>
     <section class="data-mode-panel ai-service-panel">
@@ -1551,24 +1648,41 @@ function renderDevTools() {
       <button class="outline-btn" type="button" id="pull-api-to-local">从后端拉取报告</button>
       <button class="outline-btn danger-soft" type="button" id="clear-chat">清空聊天记录</button>
     </div>
-    <div class="form-message" id="profile-message" aria-live="polite"></div>
-  </article>`;
+  </div></details>`;
 }
 function bindProfileEvents(root) {
-  root.querySelector('#clear-reports')?.addEventListener('click', async () => {
+  const run = async action => {
+    if (profileBusy) return;
+    profileBusy = true;
+    root.setAttribute('aria-busy', 'true');
+    root.querySelectorAll('button, input').forEach(control => { control.disabled = true; });
+    showProfileMessage('正在处理…', 'info');
+    try { await action(); }
+    catch { showProfileMessage('操作未完成，请确认后端连接或浏览器存储后重试。', 'error'); }
+    finally {
+      profileBusy = false;
+      const target = root.querySelector('#profile-message');
+      const message = target?.textContent || '';
+      const type = target?.classList.contains('error') ? 'error' : 'success';
+      renderProfile();
+      root.setAttribute('aria-busy', 'false');
+      if (message && message !== '正在处理…') showProfileMessage(message, type);
+    }
+  };
+  root.querySelector('#clear-reports')?.addEventListener('click', () => run(async () => {
     const sourceText = appConfig.dataMode === 'api' ? '后端报告数据' : '本地报告数据';
     if (!confirm(`确认清空${sourceText}？该操作不会恢复示例报告。`)) return;
     await clearReportsData();
     renderProfile();
     showProfileMessage(appConfig.dataMode === 'api' ? '后端报告已清空' : '本地报告已清空', 'success');
-  });
-  root.querySelector('#restore-sample')?.addEventListener('click', async () => {
+  }));
+  root.querySelector('#restore-sample')?.addEventListener('click', () => run(async () => {
     const sourceText = appConfig.dataMode === 'api' ? '后端报告数据' : '本地报告数据';
     if (!confirm(`确认恢复示例报告？这会覆盖当前${sourceText}。`)) return;
     await resetReportsToSample();
     renderProfile();
     showProfileMessage('示例报告已恢复', 'success');
-  });
+  }));
   root.querySelector('#export-reports')?.addEventListener('click', exportReportsJson);
   root.querySelector('#import-reports')?.addEventListener('change', event => {
     const file = event.target.files?.[0];
@@ -1581,12 +1695,9 @@ function bindProfileEvents(root) {
     renderProfile();
     showProfileMessage('聊天记录已清空', 'success');
   });
-  root.querySelector('#sync-local-to-api')?.addEventListener('click', syncLocalReportsToApi);
-  root.querySelector('#pull-api-to-local')?.addEventListener('click', pullApiReportsToLocal);
-  root.querySelector('#check-api-health')?.addEventListener('click', checkApiHealth);
-  root.querySelector('#check-ai-health')?.addEventListener('click', checkAiHealth);
-  root.querySelector('#switch-api-mode')?.addEventListener('click', switchToApiMode);
-  root.querySelector('#switch-local-mode')?.addEventListener('click', switchToLocalMode);
+  [['sync-local-to-api', syncLocalReportsToApi], ['pull-api-to-local', pullApiReportsToLocal], ['check-api-health', checkApiHealth], ['check-ai-health', checkAiHealth], ['switch-api-mode', switchToApiMode], ['switch-local-mode', switchToLocalMode]].forEach(([id, action]) => {
+    root.querySelector(`#${id}`)?.addEventListener('click', () => run(action));
+  });
 }
 function getReportsCount() { return getReports().length; }
 function getChatCount() { return getChatHistory().length; }
@@ -1640,7 +1751,11 @@ async function resetReportsToSample() {
   await loadReportsToState();
 }
 function exportReportsJson() {
-  const date = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+  if (appConfig.dataMode === 'api' && (!appState.reportsLoaded || appState.error || appState.loading)) {
+    showProfileMessage('报告尚未加载完成，请先重新连接后端再导出。', 'error');
+    return;
+  }
+  const date = formatDateTime(new Date()).slice(0, 10).replaceAll('-', '');
   const blob = new Blob([JSON.stringify(getReports(), null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -1673,6 +1788,7 @@ function importReportsJson(file) {
   reader.readAsText(file);
 }
 async function syncLocalReportsToApi() {
+  if (!confirm('同步会覆盖后端现有报告，本地数据不受影响。确认继续？')) return;
   try {
     const reports = reportService.exportReports();
     const result = await reportService.requestApi('/api/reports/import', { method: 'POST', body: JSON.stringify(reports) });
@@ -1706,6 +1822,14 @@ function showProfileMessage(message, type = 'info') {
   target.textContent = message;
   target.className = `form-message ${type}`;
 }
+function showNotice(message) {
+  const target = document.querySelector('#app-notice');
+  if (!target) return;
+  target.textContent = message;
+  target.hidden = false;
+  clearTimeout(showNotice.timer);
+  showNotice.timer = setTimeout(() => { target.hidden = true; }, 5000);
+}
 function renderChart(data, large) {
   if (!data.length) return '<p>暂无数据</p>';
   const w = 320;
@@ -1731,7 +1855,7 @@ function renderChart(data, large) {
     ${area ? `<path class="area-fill" d="${area}"/>` : ''}
     <path class="${lineClass}" d="${path}"/>
     ${data.map((d,i)=>`<circle class="${d.status==='normal'?'dot-teal':'dot-coral'} ${trendPointKey(d) === selectedTrendPointKey ? 'selected-dot' : ''}" cx="${x(i)}" cy="${y(d.value)}" r="${large ? 4.2 : 3.5}"/>`).join('')}
-    ${large ? data.map((d,i)=>`<circle class="trend-hit-point" data-trend-index="${i}" cx="${x(i)}" cy="${y(d.value)}" r="15"><title>${esc(d.date)} ${esc(d.name)} ${esc(formatValue(d))}</title></circle>`).join('') : ''}
+    ${large ? data.map((d,i)=>`<circle class="trend-hit-point" role="button" tabindex="0" aria-label="${esc(d.date)} ${esc(d.name)} ${esc(formatValue(d))}" aria-pressed="${trendPointKey(d) === selectedTrendPointKey}" data-trend-index="${i}" cx="${x(i)}" cy="${y(d.value)}" r="18"><title>${esc(d.date)} ${esc(d.name)} ${esc(formatValue(d))}</title></circle>`).join('') : ''}
     ${data.map((d,i)=>`<text x="${x(i)-12}" y="${h-9}">${d.date.slice(5).replace('-','/')}</text>`).join('')}
     ${large?`<text class="range-mark" x="${r+2}" y="${y(latest.refHigh)}">上限 ${latest.refHigh}</text><text class="range-mark" x="${r+2}" y="${y(latest.refLow)}">下限 ${latest.refLow}</text>`:''}
   </svg>`;
@@ -1800,7 +1924,7 @@ function formatNumber(value) {
   return Math.abs(number) >= 100 ? number.toFixed(0) : number.toFixed(2).replace(/\.?0+$/, '');
 }
 function formatValue(i) { return `${i.value} ${i.unit || ''}`.trim(); }
-function formatRange(i) { return `${i.refLow}-${i.refHigh} ${i.unit || ''}`.trim(); }
+function formatRange(i) { return `${i.refText || `${i.refLow}–${i.refHigh}`} ${i.unit || ''}`.trim(); }
 function esc(v) { return String(v ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); }
 function readJson(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } }
 window.appConfig=appConfig; window.appState=appState; window.reportService=reportService; window.chatService=chatService; window.setDataMode=setDataMode; window.loadReportsToState=loadReportsToState; window.refreshReportsAndRender=refreshReportsAndRender; window.checkApiHealth=checkApiHealth; window.switchToApiMode=switchToApiMode; window.switchToLocalMode=switchToLocalMode; window.apiHealthText=apiHealthText; window.labReferenceDictionary=labReferenceDictionary; window.medicalItemDictionary=medicalItemDictionary; window.normalizeReport=normalizeReport; window.normalizeReports=normalizeReports; window.normalizeLabItemName=normalizeLabItemName; window.getDefaultReferenceRange=getDefaultReferenceRange; window.getMedicalItemInfo=getMedicalItemInfo; window.explainLabItem=explainLabItem; window.getReports=getReports; window.saveReports=saveReports; window.addReport=addReport; window.calculateItemStatus=calculateItemStatus; window.getLatestReport=getLatestReport; window.getAbnormalItems=getAbnormalItems; window.getOverviewStats=getOverviewStats; window.getTrendData=getTrendData; window.trendStatus=trendStatus; window.statusText=statusText; window.formatValue=formatValue; window.formatRange=formatRange; window.generateAiInterpretation=generateAiInterpretation; window.aiInterpretationToText=aiInterpretationToText; window.generateAiInterpretationText=generateAiInterpretationText; window.generateMockChatReply=generateMockChatReply; window.getCurrentChatReport=getCurrentChatReport; window.getChatHistory=getChatHistory; window.saveChatHistory=saveChatHistory; window.clearChatHistory=clearChatHistory; window.addChatMessage=addChatMessage; window.callAiChatApi=callAiChatApi; window.findMatchedLabItem=findMatchedLabItem; window.buildReportSummaryReply=buildReportSummaryReply; window.buildItemExplanationReply=buildItemExplanationReply; window.isMedicalAdviceQuestion=isMedicalAdviceQuestion; window.renderChatPanel=renderChatPanel; window.renderChatContextCard=renderChatContextCard; window.renderChatMessages=renderChatMessages; window.renderQuickQuestions=renderQuickQuestions; window.loadPdfJsIfNeeded=loadPdfJsIfNeeded; window.extractTextFromPdfFile=extractTextFromPdfFile; window.groupTextItemsIntoLines=groupTextItemsIntoLines; window.normalizePdfText=normalizePdfText; window.parsePdfReportText=parsePdfReportText; window.parseReportMetaFromText=parseReportMetaFromText; window.parseLabItemsFromText=parseLabItemsFromText; window.parseLabLine=parseLabLine; window.parsePdfReferenceRange=parsePdfReferenceRange; window.normalizeParsedUnit=normalizeParsedUnit; window.buildReportFromParsedPdf=buildReportFromParsedPdf; window.calculatePdfParseConfidence=calculatePdfParseConfidence; window.pdfParserTestCases=pdfParserTestCases; window.runPdfParserTests=runPdfParserTests; window.renderPdfStatus=renderPdfStatus; window.renderPdfError=renderPdfError; window.renderPdfPreview=renderPdfPreview; window.renderParseDebugDetails=renderParseDebugDetails; window.collectParsedPdfPreview=collectParsedPdfPreview; window.handlePastedTextParse=handlePastedTextParse; window.renderOverview=renderOverview; window.renderReports=renderReports; window.renderTrends=renderTrends; window.renderAi=renderAi; window.renderProfile=renderProfile; window.renderUpload=renderUpload; window.bindUploadEvents=bindUploadEvents; window.createEmptyLabItemForm=createEmptyLabItemForm; window.collectUploadFormData=collectUploadFormData; window.validateUploadForm=validateUploadForm; window.saveUploadedReport=saveUploadedReport; window.renderReportDetail=renderReportDetail; window.renderLabItemCard=renderLabItemCard; window.bindReportDetailEvents=bindReportDetailEvents; window.renderExplanationPanel=renderExplanationPanel; window.renderAiInsightCards=renderAiInsightCards; window.renderAiReportCard=renderAiReportCard; window.renderAiInterpretation=renderAiInterpretation; window.renderDevTools=renderDevTools; window.getReportsCount=getReportsCount; window.getChatCount=getChatCount; window.resetReportsToSample=resetReportsToSample; window.clearReportsData=clearReportsData; window.exportReportsJson=exportReportsJson; window.importReportsJson=importReportsJson; window.syncLocalReportsToApi=syncLocalReportsToApi; window.pullApiReportsToLocal=pullApiReportsToLocal; window.refreshAfterDataChange=refreshAfterDataChange;
