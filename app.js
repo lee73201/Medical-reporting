@@ -34,6 +34,7 @@ let profileToolsOpen = false;
 let profileBusy = false;
 let reportEditSession = null;
 let reportListFilters = createReportFilters();
+let activeReportImport = null;
 
 function createReportFilters() {
   return { search: '', reportType: '', status: '', startDate: '', endDate: '' };
@@ -627,6 +628,7 @@ function formatDateTime(date) {
 async function showScreen(rawId) {
   const id = screens.some(screen => screen.id === rawId) ? rawId : 'overview';
   if (!canLeaveReportEditor(id)) return;
+  if (id !== 'upload') cancelReportImport();
   if (id === 'overview' && getActiveScreenId() !== 'overview') overviewItemFilter = null;
   screens.forEach(s => { s.classList.toggle('active', s.id === id); if (s.id === id) s.scrollTop = 0; });
   navButtons.forEach(btn => {
@@ -785,13 +787,14 @@ function bindOverviewStatsEvents(root, report) {
   });
 }
 function renderUpload() {
+  cancelReportImport();
   const root = document.querySelector('#upload');
   const today = formatDateTime(new Date()).slice(0, 10);
   const editing = reportEditSession?.mode === appConfig.dataMode ? reportEditSession : null;
   const report = editing?.report || { reportType: '生化检验', hospital: '市第一人民医院', date: today, items: [] };
   root.innerHTML = `${topBar(editing ? '编辑报告' : '上传报告', editing ? 'report-detail' : 'reports')}
     ${editing ? `<section class="edit-report-notice"><strong>${esc(report.patient.name)} · ${esc(report.patient.patientId)}</strong><p>修改后，旧 AI 解读将失效。请按原报告核对数据。</p></section>` : `
-    <article class="card upload-hero pdf-upload-card"><div><div class="cloud"><svg viewBox="0 0 24 24"><path d="M12 19V9M8 13l4-4 4 4M20 17.5A4.5 4.5 0 0 0 15.5 13h-.7A6 6 0 1 0 5 17.5"/></svg></div><h2>上传报告文件</h2><p>支持文本型 PDF；扫描件和图片型 PDF 暂不支持</p><button class="primary-btn" id="choose-file" type="button" style="width:118px;min-height:38px">选择 PDF</button><input id="pdf-file-input" type="file" accept="application/pdf,.pdf" hidden><p style="margin-top:14px">PDF 仅在浏览器本地解析，不上传服务器。OCR 解析将在后续版本加入。</p></div></article>
+    <article class="card upload-hero pdf-upload-card"><div><div class="cloud"><svg viewBox="0 0 24 24"><path d="M12 19V9M8 13l4-4 4 4M20 17.5A4.5 4.5 0 0 0 15.5 13h-.7A6 6 0 1 0 5 17.5"/></svg></div><h2>上传报告文件</h2><p>支持 PDF、PNG、JPG、WebP<br>扫描件与图片型 PDF 使用本地 OCR 识别</p><button class="primary-btn" id="choose-file" type="button" style="width:148px;min-height:40px">选择 PDF / 图片</button><input id="pdf-file-input" type="file" accept="application/pdf,.pdf,image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" hidden><label class="ocr-mode-option"><input type="checkbox" id="force-ocr">使用图片识别（OCR）重试文字缺失的 PDF</label><p class="ocr-privacy-note">原文件仅在浏览器内处理，不上传服务器。最多 20MB / 10 页；识别后必须核对，确认保存才会写入当前数据源。</p></div></article>
     <article class="card paste-parse-card"><h2>粘贴报告文本解析</h2><p>可把文本型 PDF 中复制出的报告内容粘贴到这里，使用同一套解析规则生成预览。</p><textarea id="paste-report-text" rows="7" placeholder="例如：GLU 7.4 mmol/L 3.9-6.1"></textarea><button class="outline-btn" id="parse-pasted-text" type="button">解析粘贴文本</button><div class="form-message" id="paste-parse-message" aria-live="polite"></div></article>
     <section id="pdf-preview-root"></section>`}
     <form id="report-form" novalidate><article class="card form-card"><h2>报告基本信息</h2>
@@ -833,7 +836,7 @@ function bindUploadEvents(root) {
     event.target.value = '';
   };
   const pasteButton = root.querySelector('#parse-pasted-text');
-  if (pasteButton) pasteButton.onclick = () => handlePastedTextParse(root);
+  if (pasteButton) pasteButton.onclick = () => { cancelReportImport(); handlePastedTextParse(root); };
   root.querySelector('#add-item').onclick = addRow;
   root.querySelector('#add-item-wide').onclick = addRow;
   body.addEventListener('input', (event) => {
@@ -1017,32 +1020,112 @@ function showUploadMessage(target, text, type = 'info') {
   target.textContent = text;
   target.className = `form-message ${type}`;
 }
+function isReportImage(file) {
+  return /^image\/(png|jpeg|webp)$/i.test(file?.type || '') || /\.(png|jpe?g|webp)$/i.test(file?.name || '');
+}
+function validateReportFile(file) {
+  if (!isPdfFile(file) && !isReportImage(file)) return '请上传 PDF、PNG、JPG 或 WebP 文件。';
+  if (!file.size) return '文件为空，请重新选择报告。';
+  if (file.size > 20 * 1024 * 1024) return '文件超过 20MB，请压缩或拆分后重试。';
+  return '';
+}
+function cancelReportImport(showMessage = false) {
+  const job = activeReportImport;
+  if (!job) return;
+  activeReportImport = null;
+  job.cancelled = true;
+  job.renderTask?.cancel();
+  if (job.loadingTask) void job.loadingTask.destroy().catch(() => {});
+  if (job.ocr) void job.ocr.close();
+  const button = job.root.querySelector('#choose-file');
+  if (button) button.disabled = false;
+  if (showMessage) job.preview.innerHTML = '<article class="card pdf-error-message"><strong>已取消识别</strong><p>可以重新选择文件，或继续手动录入。</p></article>';
+}
+function importIsCurrent(job) {
+  return activeReportImport === job && !job.cancelled && job.root.isConnected !== false && job.root.querySelector('#pdf-preview-root') === job.preview;
+}
+function renderExtractedReport(root, extracted) {
+  const parsed = parsePdfReportText(extracted.text);
+  parsed.source = extracted;
+  parsed.confidence = calculatePdfParseConfidence(parsed);
+  if (!parsed.items.length) {
+    if (extracted.ocr) renderOcrTextReview(root, extracted);
+    else renderPdfError(root, '未能自动识别检验项目，请检查文本或勾选图片识别重试。');
+    return;
+  }
+  renderPdfPreview(root, parsed);
+}
+function renderOcrTextReview(root, extracted) {
+  root.innerHTML = `<article class="card pdf-error-message"><strong>未能整理出检验项目</strong><p>已提取部分文字，请对照原件修正后重新解析，或改为手动录入。</p>${renderOcrTextEditor(extracted)}<button class="outline-btn" type="button" data-pdf-clear>改为手动录入</button></article>`;
+  bindOcrTextEditor(root, extracted);
+  root.querySelector('.ocr-text-review').open = true;
+  root.querySelector('[data-pdf-clear]').onclick = () => root.replaceChildren();
+}
+function renderOcrTextEditor(extracted) {
+  return `<details class="ocr-text-review"><summary>查看 / 修正 OCR 文字</summary><label>识别出的报告文字<textarea data-ocr-text rows="9" spellcheck="false">${esc(extracted.text)}</textarea></label><button class="outline-btn" type="button" data-ocr-reparse>重新解析文字</button></details>`;
+}
+function bindOcrTextEditor(root, extracted) {
+  root.querySelector('[data-ocr-reparse]')?.addEventListener('click', () => {
+    renderExtractedReport(root, { ...extracted, text: root.querySelector('[data-ocr-text]').value, edited: true });
+  });
+}
 async function handlePdfUpload(file, root = document.querySelector('#upload')) {
+  cancelReportImport();
   const previewRoot = root.querySelector('#pdf-preview-root');
+  const validation = validateReportFile(file);
+  if (validation) { renderPdfError(previewRoot, validation); return; }
+  if (window.location?.protocol === 'file:') { renderPdfError(previewRoot, '请通过 http://localhost:8088 打开应用，不能直接双击 HTML 进行识别。'); return; }
+  const job = { root, preview: previewRoot, cancelled: false, page: 1, ocr: null, loadingTask: null, renderTask: null };
+  activeReportImport = job;
+  const onStatus = message => {
+    if (!importIsCurrent(job)) return;
+    renderPdfStatus(previewRoot, message);
+    const card = previewRoot.querySelector('.pdf-parse-status');
+    const cancel = document.createElement('button');
+    cancel.className = 'outline-btn'; cancel.type = 'button'; cancel.textContent = '取消';
+    cancel.onclick = () => cancelReportImport(true);
+    card.append(cancel);
+  };
+  if (window.MedicalOcr) job.ocr = window.MedicalOcr.createSession(event => {
+    onStatus(event.status === 'recognizing text' ? `正在 OCR 识别第 ${job.page} 页 · ${Math.round((event.progress || 0) * 100)}%` : '正在加载本地 OCR 引擎和中英文语言包…');
+  });
+  const choose = root.querySelector('#choose-file');
+  if (choose) choose.disabled = true;
   try {
-    if (!isPdfFile(file)) {
-      renderPdfError(previewRoot, '请上传 PDF 文件。');
-      return;
+    onStatus(isPdfFile(file) ? '正在读取 PDF' : '正在读取报告图片');
+    let extracted;
+    if (isPdfFile(file)) {
+      extracted = await extractTextFromPdfFile(file, onStatus, {
+        ocr: job.ocr, forceOcr: Boolean(root.querySelector('#force-ocr')?.checked),
+        check: () => { if (!importIsCurrent(job)) throw new DOMException('已取消', 'AbortError'); },
+        onPage: number => { job.page = number; }, onLoadingTask: task => { job.loadingTask = task; },
+        onRenderTask: task => { job.renderTask = task; }
+      });
+    } else {
+      if (!job.ocr) throw new Error('OCR_MODULE_UNAVAILABLE');
+      const canvas = await window.MedicalOcr.imageToCanvas(file, job.ocr);
+      try {
+        const recognized = await job.ocr.recognize(canvas);
+        extracted = { ok: Boolean(recognized.text.trim()), type: 'ocr-image', ocr: true, text: recognized.text, pages: [{ pageNumber: 1, method: 'ocr', ...recognized }], pageCount: 1 };
+      } finally { canvas.width = 0; canvas.height = 0; }
     }
-    if (file.size > 10 * 1024 * 1024 && !confirm('文件较大，浏览器解析可能较慢。是否继续？')) return;
-    renderPdfStatus(previewRoot, '正在读取 PDF');
-    const extracted = await extractTextFromPdfFile(file, status => renderPdfStatus(previewRoot, status));
+    if (!importIsCurrent(job)) return;
     if (!extracted.ok) {
-      renderPdfError(previewRoot, extracted.message || 'PDF 解析失败，请尝试手动录入。');
+      renderPdfError(previewRoot, extracted.message || '未识别到有效文字。请使用清晰、正向的原件图片，或改为手动录入。');
       return;
     }
-    renderPdfStatus(previewRoot, '正在解析检验项目');
-    const parsed = parsePdfReportText(extracted.text);
-    parsed.source = extracted;
-    parsed.confidence = calculatePdfParseConfidence(parsed);
-    if (!parsed.items.length) {
-      renderPdfError(previewRoot, '未能自动识别检验项目，请手动录入。');
-      return;
-    }
-    renderPdfPreview(previewRoot, parsed);
+    renderExtractedReport(previewRoot, extracted);
   } catch (error) {
-    console.error('PDF 解析异常', error);
-    renderPdfError(previewRoot, 'PDF 解析失败，请尝试手动录入。');
+    if (!importIsCurrent(job)) return;
+    const message = error.name === 'OcrError' ? error.message : '报告识别失败，请检查本地 OCR 资源，或使用清晰的 PNG / JPG 文件重试。';
+    renderPdfError(previewRoot, message);
+    const retry = document.createElement('button');
+    retry.className = 'outline-btn'; retry.type = 'button'; retry.textContent = '重新识别';
+    retry.onclick = () => handlePdfUpload(file, root);
+    previewRoot.querySelector('.pdf-error-message').append(retry);
+  } finally {
+    if (job.ocr) await job.ocr.close();
+    if (activeReportImport === job) { activeReportImport = null; if (choose) choose.disabled = false; }
   }
 }
 function handlePastedTextParse(root = document.querySelector('#upload')) {
@@ -1089,7 +1172,7 @@ async function loadPdfJsIfNeeded() {
   window.pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.js';
   return window.pdfjsLib;
 }
-async function extractTextFromPdfFile(file, onStatus = () => {}) {
+async function extractTextFromPdfFile(file, onStatus = () => {}, options = {}) {
   if (!isPdfFile(file)) return { ok: false, reason: 'not_pdf', message: '请上传 PDF 文件。' };
   onStatus('正在提取文本');
   const pdfjsLib = await loadPdfJsIfNeeded();
@@ -1100,30 +1183,67 @@ async function extractTextFromPdfFile(file, onStatus = () => {}) {
     standardFontDataUrl: '/vendor/pdfjs/standard_fonts/'
   };
   let pdf;
+  const openDocument = config => {
+    options.check?.();
+    const task = pdfjsLib.getDocument({ ...config, data: data.slice(0) });
+    options.onLoadingTask?.(task);
+    return task.promise;
+  };
   try {
-    pdf = await pdfjsLib.getDocument({ ...pdfDocumentOptions, data: data.slice(0) }).promise;
+    pdf = await openDocument(pdfDocumentOptions);
   } catch (error) {
+    options.check?.();
     console.warn('PDF.js worker 解析失败，切换到本地无 worker 模式。', error);
     try {
-      pdf = await pdfjsLib.getDocument({ ...pdfDocumentOptions, data: data.slice(0), disableWorker: true }).promise;
+      pdf = await openDocument({ ...pdfDocumentOptions, disableWorker: true });
     } catch (fallbackError) {
+      options.check?.();
       console.warn('PDF 字体映射资源加载失败，继续尝试提取已有文本。', fallbackError);
       onStatus('PDF 字体映射资源加载失败，正在尝试提取已有文本');
-      pdf = await pdfjsLib.getDocument({ data: data.slice(0), disableWorker: true }).promise;
+      pdf = await openDocument({ disableWorker: true });
     }
   }
-  const pages = [];
-  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-    const page = await pdf.getPage(pageNumber);
-    const textContent = await page.getTextContent();
-    const text = groupTextItemsIntoLines(textContent.items);
-    pages.push({ pageNumber, text });
-  }
-  const text = normalizePdfText(pages.map(page => page.text).join('\n'));
-  if (!text.trim()) {
-    return { ok: false, reason: 'no_text', message: '当前 PDF 可能是扫描件或图片型 PDF，纯文本解析无法识别。请使用手动录入，或后续接入 OCR。' };
-  }
-  return { ok: true, text, pages, pageCount: pdf.numPages };
+  try {
+    if (pdf.numPages > 10) return { ok: false, reason: 'page_limit', message: '单次最多处理 10 页 PDF，请拆分文件后重试，不会保存部分页面。' };
+    const pages = [];
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      options.check?.();
+      options.onPage?.(pageNumber);
+      onStatus(`正在提取第 ${pageNumber} / ${pdf.numPages} 页文字`);
+      const page = await pdf.getPage(pageNumber);
+      try {
+        let text = '';
+        try { text = groupTextItemsIntoLines((await page.getTextContent()).items); }
+        catch (error) { if (!options.ocr) throw error; }
+        options.check?.();
+        const useOcr = options.ocr && (options.forceOcr || !parseLabItemsFromText(text).items.length);
+        if (useOcr) {
+          onStatus(`正在准备第 ${pageNumber} / ${pdf.numPages} 页 OCR`);
+          const base = page.getViewport({ scale: 1 });
+          const size = window.MedicalOcr.fitDimensions(base.width, base.height, 3);
+          const viewport = page.getViewport({ scale: size.scale });
+          const canvas = document.createElement('canvas');
+          canvas.width = size.width; canvas.height = size.height;
+          try {
+            const canvasContext = canvas.getContext('2d');
+            if (!canvasContext) throw new Error('CANVAS_UNAVAILABLE');
+            const task = page.render({ canvasContext, viewport, background: '#ffffff' });
+            options.onRenderTask?.(task);
+            await task.promise;
+            options.check?.();
+            const recognized = await options.ocr.recognize(canvas);
+            pages.push({ pageNumber, method: 'ocr', ...recognized });
+          } finally { canvas.width = 0; canvas.height = 0; options.onRenderTask?.(null); }
+        } else pages.push({ pageNumber, method: 'text', text });
+      } finally { page.cleanup?.(); }
+    }
+    options.check?.();
+    const text = normalizePdfText(pages.map(page => page.text).join('\n'));
+    const ocr = pages.some(page => page.method === 'ocr');
+    const result = { ok: Boolean(text.trim()), text, pages, pageCount: pdf.numPages, ocr, type: ocr ? 'ocr-pdf' : 'pdf', unreadablePages: pages.filter(page => !page.text.trim()).map(page => page.pageNumber) };
+    if (!result.ok) return { ...result, reason: 'no_text', message: options.ocr ? '未识别到有效文字，请使用清晰、正向的扫描文件或手动录入。' : '未提取到可复制文字，请使用 OCR 识别或手动录入。' };
+    return result;
+  } finally { await pdf.destroy?.(); }
 }
 function groupTextItemsIntoLines(textItems = []) {
   const rows = [];
@@ -1297,19 +1417,20 @@ function renderPdfError(root, message) {
 function renderPdfPreview(root, parsed) {
   if (!root) return;
   const confidence = parsed.confidence || calculatePdfParseConfidence(parsed);
-  const rows = (parsed.items || []).map((item, index) => `<tr class="parsed-item-row" data-ref-source="${esc(item.refSource || 'unknown')}">
+  const rows = (parsed.items || []).map((item, index) => `<tr class="parsed-item-row" data-ref-source="${esc(item.refSource || 'unknown')}" data-ref-text="${esc(item.refText || '')}" data-ref-low="${esc(item.refLow)}" data-ref-high="${esc(item.refHigh)}">
     <td><input name="pdfItemName" value="${esc(item.name)}" aria-label="项目名称 ${index + 1}"></td>
     <td><input name="pdfItemValue" type="number" step="0.01" value="${esc(item.value)}" aria-label="数值 ${index + 1}"></td>
     <td><input name="pdfItemUnit" value="${esc(item.unit || '')}" aria-label="单位 ${index + 1}"></td>
     <td><input name="pdfItemRefLow" type="number" step="0.01" value="${esc(item.refLow)}" aria-label="参考下限 ${index + 1}"></td>
     <td><input name="pdfItemRefHigh" type="number" step="0.01" value="${esc(item.refHigh)}" aria-label="参考上限 ${index + 1}"></td>
-    <td><span class="ref-source-badge ${esc(item.refSource || 'unknown')}">${refSourceText(item.refSource || 'unknown')}</span></td>
+    <td><span class="ref-source-badge ${esc(item.refSource || 'unknown')}">${refSourceText(item.refSource || 'unknown')}</span>${parsed.source?.ocr && getDefaultReferenceRange(item.name)?.unit && normalizeParsedUnit(item.unit) !== normalizeParsedUnit(getDefaultReferenceRange(item.name).unit) ? '<small class="ocr-unit-warning">单位与常用单位不同，请核对原件</small>' : ''}</td>
   </tr>`).join('');
   root.innerHTML = `<article class="card pdf-preview-card">
     <div class="pdf-preview-head">
-      <div><h2>PDF 解析结果预览</h2><p>请核对并编辑解析结果，确认后才会保存到报告列表。</p></div>
-      <span class="pdf-confidence-badge ${confidence.level}">${Math.round(confidence.score * 100)}% · ${confidence.message}</span>
+      <div><h2>${parsed.source?.ocr ? 'OCR 解析结果预览' : 'PDF 解析结果预览'}</h2><p>请核对并编辑解析结果，确认后才会保存到报告列表。</p></div>
+      <span class="pdf-confidence-badge ${confidence.level}">${parsed.source?.ocr ? '字段完整度 ' : ''}${Math.round(confidence.score * 100)}% · ${parsed.source?.ocr ? '不代表识别准确率' : confidence.message}</span>
     </div>
+    ${parsed.source?.ocr ? `<p class="ocr-review-warning">OCR 可能误识别小数点、数字、单位和参考范围，不能据此直接判断健康状况。患者和日期等未识别字段可能使用默认值，也请对照原件核对。${parsed.source.unreadablePages?.length ? `第 ${esc(parsed.source.unreadablePages.join('、'))} 页未识别出文字，请确认是否遗漏项目。` : '请逐项核对后保存。'}</p>` : ''}
     <div class="pdf-meta-grid">
       <label>报告类型<input name="pdfReportType" value="${esc(parsed.reportType || '检验报告')}"></label>
       <label>医院名称<input name="pdfHospital" value="${esc(parsed.hospital || '未知机构')}"></label>
@@ -1321,18 +1442,23 @@ function renderPdfPreview(root, parsed) {
     <p class="reference-note">参考范围以原报告为准，系统默认值仅用于辅助录入。</p>
     <div class="pdf-preview-table-wrap"><table class="pdf-preview-table"><thead><tr><th>项目</th><th>数值</th><th>单位</th><th>下限</th><th>上限</th><th>来源</th></tr></thead><tbody>${rows}</tbody></table></div>
     ${renderParseDebugDetails(parsed, confidence)}
+    ${parsed.source?.ocr ? renderOcrTextEditor(parsed.source) : ''}
     ${parsed.unmatchedLines?.length ? `<details class="pdf-unmatched-lines"><summary>未识别文本 ${parsed.unmatchedLines.length} 行</summary><pre>${esc(parsed.unmatchedLines.slice(0, 40).join('\n'))}</pre></details>` : ''}
+    ${parsed.source?.ocr ? '<label class="ocr-verification"><input type="checkbox" data-ocr-verified>我已对照原件核对数值、小数点、单位和参考范围</label>' : ''}
     <div class="pdf-preview-actions"><button class="outline-btn" type="button" data-pdf-discard>放弃解析结果，改为手动录入</button><button class="primary-btn" type="button" data-pdf-save>确认保存解析结果</button></div>
     <div class="form-message" data-pdf-message aria-live="polite"></div>
   </article>`;
   bindPdfPreviewEvents(root);
+  if (parsed.source?.ocr) bindOcrTextEditor(root, parsed.source);
 }
 function renderParseDebugDetails(parsed, confidence = calculatePdfParseConfidence(parsed)) {
   const rawText = parsed.rawText || parsed.source?.text || '';
   const lines = normalizePdfText(rawText).split('\n').filter(Boolean);
   const items = parsed.items || [];
   const countBySource = source => items.filter(item => item.refSource === source).length;
-  const sourceLabel = parsed.source?.type === 'paste' ? '粘贴文本' : `PDF ${parsed.source?.pageCount || 0} 页`;
+  const sourceLabel = parsed.source?.type === 'paste' ? '粘贴文本' : parsed.source?.type === 'ocr-image' ? '报告图片 · 本地 OCR' : `PDF ${parsed.source?.pageCount || 0} 页${parsed.source?.ocr ? ' · 含 OCR' : ''}`;
+  const ocrPages = (parsed.source?.pages || []).filter(page => page.method === 'ocr');
+  const confidences = ocrPages.map(page => page.confidence).filter(Number.isFinite);
   return `<details class="pdf-debug-details">
     <summary>查看解析详情</summary>
     <div class="pdf-debug-grid">
@@ -1345,11 +1471,14 @@ function renderParseDebugDetails(parsed, confidence = calculatePdfParseConfidenc
       <span>系统默认范围</span><strong>${countBySource('dictionary')}</strong>
       <span>未知范围</span><strong>${countBySource('unknown')}</strong>
       <span>置信度</span><strong>${Math.round(confidence.score * 100)}% / ${esc(confidence.level)}</strong>
+      ${ocrPages.length ? `<span>OCR 页面</span><strong>${ocrPages.length} 页</strong><span>引擎字符置信度（非医学准确率）</span><strong>${confidences.length ? `${Math.round(confidences.reduce((sum, value) => sum + value, 0) / confidences.length)}%` : '暂无'}</strong>` : ''}
     </div>
     <div class="pdf-debug-lines"><strong>unmatchedLines</strong><pre>${esc((parsed.unmatchedLines || []).join('\n') || '无')}</pre></div>
   </details>`;
 }
 function bindPdfPreviewEvents(root) {
+  const verified = root.querySelector('[data-ocr-verified]');
+  root.oninput = event => { if (verified && event.target !== verified) verified.checked = false; };
   root.querySelectorAll('[name="pdfItemUnit"], [name="pdfItemRefLow"], [name="pdfItemRefHigh"]').forEach(input => {
     input.addEventListener('input', () => {
       const row = input.closest('tr');
@@ -1357,6 +1486,11 @@ function bindPdfPreviewEvents(root) {
       const badge = row.querySelector('.ref-source-badge');
       badge.className = 'ref-source-badge manual';
       badge.textContent = refSourceText('manual');
+      const warning = row.querySelector('.ocr-unit-warning');
+      if (warning) {
+        const defaults = getDefaultReferenceRange(row.querySelector('[name="pdfItemName"]').value);
+        warning.hidden = normalizeParsedUnit(row.querySelector('[name="pdfItemUnit"]').value) === normalizeParsedUnit(defaults?.unit);
+      }
     });
   });
   root.querySelectorAll('[name="pdfItemName"]').forEach(input => {
@@ -1369,6 +1503,11 @@ function bindPdfPreviewEvents(root) {
     const submit = root.querySelector('[data-pdf-save]');
     if (submit.disabled) return;
     const message = root.querySelector('[data-pdf-message]');
+    if (verified && !verified.checked) {
+      showUploadMessage(message, '请先对照原件核对 OCR 结果，并勾选核对确认。', 'error');
+      verified.focus();
+      return;
+    }
     const result = collectParsedPdfPreview(root);
     if (result.errors.length) {
       showUploadMessage(message, result.errors[0], 'error');
@@ -1413,7 +1552,9 @@ function collectParsedPdfPreview(root) {
     if (refLow > refHigh) errors.push(`PDF 预览第 ${index + 1} 个检验项目参考下限不能大于上限`);
     const name = normalizeLabItemName(nameRaw);
     const refSource = row.dataset.refSource || 'unknown';
-    return { name, value, unit, refLow, refHigh, refText: `${refLow}–${refHigh}`, refSource, status: calculateItemStatus(value, refLow, refHigh) };
+    const unchangedBounds = lowRaw === row.dataset.refLow && highRaw === row.dataset.refHigh;
+    const refText = unchangedBounds && row.dataset.refText ? row.dataset.refText : `${refLow}–${refHigh}`;
+    return { name, value, unit, refLow, refHigh, refText, refSource, status: calculateItemStatus(value, refLow, refHigh) };
   }).filter(Boolean);
   const report = {
     id: `r${Date.now()}`,
@@ -2120,4 +2261,5 @@ window.appConfig=appConfig; window.appState=appState; window.reportService=repor
 window.aiInterpretationState=aiInterpretationState; window.fetchJsonWithTimeout=fetchJsonWithTimeout; window.callAiInterpretApi=callAiInterpretApi; window.requestAiInterpretation=requestAiInterpretation; window.checkAiHealth=checkAiHealth;
 window.renderOverviewItemBreakdown=renderOverviewItemBreakdown; window.bindOverviewStatsEvents=bindOverviewStatsEvents; window.renderTrendPointDetail=renderTrendPointDetail; window.renderTrendTabContent=renderTrendTabContent; window.renderTrendExplanation=renderTrendExplanation; window.analyzeTrendAbnormality=analyzeTrendAbnormality; window.renderTrendAbnormalAnalysis=renderTrendAbnormalAnalysis; window.renderTrendHistory=renderTrendHistory; window.trendPointKey=trendPointKey;
 window.filterReports = filterReports; window.getReportFilterError = getReportFilterError; window.startReportEdit = startReportEdit; window.saveEditedReport = saveEditedReport;
+window.validateReportFile = validateReportFile; window.cancelReportImport = cancelReportImport;
 showScreen('overview');

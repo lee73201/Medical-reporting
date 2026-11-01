@@ -44,12 +44,100 @@ function harness() {
     confirm: () => false,
     fetch: async () => { throw new TypeError('Network unavailable'); }
   });
+  vm.runInContext(readFileSync(join(__dirname, '..', 'ocr.js'), 'utf8'), context);
   vm.runInContext(readFileSync(join(__dirname, '..', 'app.js'), 'utf8'), context);
   return { context, app: context.window, roots, storage, run: code => vm.runInContext(code, context) };
 }
 function fixture(app) {
   return app.normalizeReport({ id: 'synthetic-test', patient: { name: '测试患者', age: 40, patientId: 'TEST' }, reportType: '生化检验', hospital: '测试机构', date: '2026-06-01', items: [{ name: 'GLU', value: 7.4, unit: 'mmol/L', refLow: 3.9, refHigh: 6.1, refSource: 'report' }] });
 }
+
+test('report file validation accepts supported PDF/images and rejects empty/oversized files', () => {
+  const { app } = harness();
+  for (const name of ['scan.pdf', 'report.PNG', 'report.jpeg', 'report.webp']) {
+    assert.equal(app.validateReportFile({ name, size: 100, type: '' }), '');
+  }
+  assert.match(app.validateReportFile({ name: 'note.txt', size: 10 }), /请上传/);
+  assert.match(app.validateReportFile({ name: 'scan.pdf', size: 0 }), /文件为空/);
+  assert.match(app.validateReportFile({ name: 'scan.pdf', size: 21 * 1024 * 1024 }), /20MB/);
+});
+
+test('mixed PDF uses text extraction first, OCR only where needed and releases canvases', async () => {
+  const { app, context } = harness();
+  const counts = { ocr: 0, cleanup: 0, destroyed: 0 };
+  const canvases = [];
+  context.document.createElement = () => {
+    const canvas = { width: 0, height: 0, getContext: () => ({}) };
+    canvases.push(canvas); return canvas;
+  };
+  app.pdfjsLib = { GlobalWorkerOptions: {}, getDocument: options => {
+    assert.equal(options.cMapUrl, '/vendor/pdfjs/cmaps/');
+    return { promise: Promise.resolve({ numPages: 2, async destroy() { counts.destroyed++; },
+      async getPage(number) { return {
+        async getTextContent() { return { items: number === 1 ? [{ str: 'GLU 5.0 mmol/L 3.9-6.1', transform: [0, 0, 0, 0, 10, 700] }] : [] }; },
+        getViewport: ({ scale }) => ({ width: 600 * scale, height: 760 * scale }),
+        render: () => ({ promise: Promise.resolve() }), cleanup() { counts.cleanup++; }
+      }; }
+    }) };
+  } };
+  const extracted = await app.extractTextFromPdfFile({ name: 'mixed.pdf', arrayBuffer: async () => new ArrayBuffer(4) }, () => {}, {
+    ocr: { async recognize() { counts.ocr++; return { text: 'LDL 3.7 mmol/L 0-3.4', confidence: 90 }; } }
+  });
+  assert.equal(counts.ocr, 1);
+  assert.equal(counts.cleanup, 2);
+  assert.equal(counts.destroyed, 1);
+  assert.equal(extracted.pages[0].method, 'text');
+  assert.equal(extracted.pages[1].method, 'ocr');
+  assert.equal(extracted.ocr, true);
+  assert.equal(app.buildReportFromParsedPdf(app.parsePdfReportText(extracted.text)).items.length, 2);
+  assert.equal(canvases[0].width, 0);
+  assert.equal(canvases[0].height, 0);
+});
+
+test('PDF limits reject the whole file rather than silently saving partial pages', async () => {
+  const { app } = harness();
+  let destroyed = false;
+  app.pdfjsLib = { GlobalWorkerOptions: {}, getDocument: () => ({ promise: Promise.resolve({ numPages: 11, async destroy() { destroyed = true; } }) }) };
+  const extracted = await app.extractTextFromPdfFile({ name: 'long.pdf', arrayBuffer: async () => new ArrayBuffer(1) });
+  assert.equal(extracted.reason, 'page_limit');
+  assert.equal(destroyed, true);
+});
+
+test('OCR preview requires explicit verification, which editing resets', async () => {
+  const { app, context } = harness();
+  let saved = 0;
+  context.saveUploadedReport = async () => { saved++; };
+  const verified = { checked: false, focus() {} };
+  const submit = { disabled: false };
+  const message = {};
+  const nodes = { '[data-ocr-verified]': verified, '[data-pdf-save]': submit, '[data-pdf-message]': message, '[data-pdf-discard]': {} };
+  const root = { querySelector: selector => nodes[selector] || null, querySelectorAll: () => [] };
+  context.bindPdfPreviewEvents(root);
+  await submit.onclick();
+  assert.equal(saved, 0);
+  assert.match(message.textContent, /勾选核对确认/);
+  verified.checked = true;
+  root.oninput({ target: {} });
+  assert.equal(verified.checked, false);
+});
+
+test('parsed preview preserves original one-sided reference text until bounds change', () => {
+  const { app } = harness();
+  const row = entryRow({ pdfItemName: 'TC', pdfItemValue: 5.8, pdfItemUnit: 'mmol/L', pdfItemRefLow: 0, pdfItemRefHigh: 5.2 },
+    { refSource: 'report', refText: '≤5.2', refLow: '0', refHigh: '5.2' });
+  const fields = { pdfReportType: '生化检验', pdfHospital: '测试机构', pdfDate: '2026-11-02' };
+  const root = {
+    querySelector: selector => ({ value: fields[selector.match(/name="([^"]+)"/)[1]] || '' }),
+    querySelectorAll: () => [row]
+  };
+  const result = app.collectParsedPdfPreview(root);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.report.items[0].refText, '≤5.2');
+  assert.equal(result.report.items[0].status, 'high');
+  row.inputs.pdfItemRefHigh.value = '6';
+  row.dataset.refSource = 'manual';
+  assert.equal(app.collectParsedPdfPreview(root).report.items[0].refText, '0–6');
+});
 
 test('overview starts collapsed and toggles the same stat closed', () => {
   const { roots, run } = harness();

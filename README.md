@@ -4,7 +4,52 @@
 
 这是一个医疗检验报告管理 MVP，用于录入、管理和解读医疗检验报告。系统支持检验项目异常识别、历史趋势分析、规则化 AI 解读、本地 mock AI 对话，以及可选的 FastAPI + SQLite 数据持久化。
 
-当前版本不接真实 OCR，不做用户登录。前端默认使用浏览器 `localStorage`，也可以在 profile 开发者工具中切换到 API 模式，从本地 FastAPI 后端读取和保存报告数据；AI 解读/对话可通过 FastAPI 后端代理调用 DeepSeek，失败时自动回退到本地规则 mock。
+当前支持浏览器本地 OCR（扫描件、图片型 PDF 和报告图片），不做用户登录。前端默认使用浏览器 `localStorage`，也可以在 profile 开发者工具中切换到 API 模式，从本地 FastAPI 后端读取和保存报告数据；AI 解读/对话可通过 FastAPI 后端代理调用 DeepSeek，失败时自动回退到本地规则 mock。
+
+## 扫描件与报告图片：version7-local-ocr
+
+这是对 HTML 项目的增量更新，没有改变标准 report 数据结构、后端 API 或现有检验项目 parser 规则。
+
+### 使用流程
+
+1. 通过 HTTP 打开应用，例如 `http://127.0.0.1:8088/index.html`，不要直接双击 HTML。
+2. 在“上传报告”选择 PDF、PNG、JPG 或 WebP。文本 PDF 优先提取文字；没有可解析项目的页面自动渲染成图片进行 OCR，混合 PDF 逐页处理。
+3. 如果 PDF 的文字层存在但不完整，可勾选“使用图片识别（OCR）重试文字缺失的 PDF”，让整份 PDF 逐页改用 OCR。此模式可能比原生文字提取更不准确。
+4. 识别结果复用现有解析预览，可修改患者、医院、日期、项目、数值、单位和参考范围。无法整理项目时，仍可打开已识别文字修正。
+5. “查看 / 修正 OCR 文字”允许修正识别文字并重新调用同一套 `parsePdfReportText()`。没有自动纠正数字、小数点或猜测单位的规则。
+6. 必须逐项对照原件，勾选核对确认后再保存。修改字段会取消勾选，需要重新核对。所有结果只在明确确认后调用现有 `saveUploadedReport()`：local 写入 `lab_reports_v2`，API 调用现有报告 API。
+
+### 资源、隐私与限制
+
+- 引擎为 Tesseract.js 6.0.1 / core 6.0.0，简体中文与英文语言包来自官方 tessdata_fast。全部位于 `vendor/ocr/`，不依赖 OCR CDN 或外部 OCR 服务。来源与许可见 [资源说明](vendor/ocr/README.md)。
+- `ocr.js` 按需加载识别 worker；PDF.js 负责将扫描页渲染为 canvas。识别引擎与语言包约 20MB（目录总量），浏览器只加载当前选中的 core 变体。
+- 原 PDF/图片不上传服务器，不写入 localStorage，也不在日志中打印识别全文。确认后的结构化报告按当前数据模式保存；之后主动调用真实 AI 仍会按原有流程发送结构化报告到后端 AI 代理。
+- 单文件最多 20MB、PDF 最多 10 页、输入图片最多 2500 万像素；每页识别画布最多约 600 万像素，长边不超过 3200px。超过 PDF 页数限制会整份拒绝，不会悄悄保存部分页面。
+- 逐页识别，提供进度、取消、失败重试。切换页面会取消当前任务；初始化期间取消时停止展示结果，并在 worker 创建完成后释放它。
+- OCR 可能漏行、误识别小数点、数值、日期或单位。单位与字典常用单位不同时提示核对，**不会直接替换为字典单位**。字段完整度不代表识别准确率，引擎字符置信度也不是医学准确率。
+- 推荐清晰、正向、单列表格的打印报告。模糊、倾斜、旋转、手写、多栏复杂表格、定性结果以及全部真实医院版式未充分验证。无法确认时改用手动录入，不要据此诊断。
+- 没有新增后端 OCR、云识别、用户认证或隐私隔离能力；仍不适合存储真实敏感医疗数据。
+
+### 测试
+
+```bash
+node --check app.js
+node --check ocr.js
+node --test tests/frontend.test.cjs tests/ocr.test.cjs
+```
+
+前端自动测试 41/41 通过，覆盖资源缺失、worker 复用、初始化/识别取消、超时、画布限制、混合 PDF 分流、页数限制、保存前核对、原文参考文本保留和原有数据流程。原 parser 的 14 条用例保持通过；后端临时数据库回归通过，仅有现有测试依赖的弃用提示。
+
+可选生成合成测试文件（测试工具依赖 Pillow、reportlab、pypdf，不是应用运行依赖）：
+
+```bash
+python -m pip install Pillow reportlab pypdf
+python tests/create_ocr_fixtures.py --output /tmp/medical-ocr-test
+```
+
+非 macOS 环境可用 `--font /path/to/chinese-font.ttc` 指定中文字体。生成中文报告 PNG、两页纯图片 PDF、混合 PDF、空白扫描件和 11 页超限文件，均不含真实患者信息。
+
+本次浏览器实际验收：中文图片识别到空腹血糖/LDL/CREA；两页扫描 PDF 识别到 6 项；混合 PDF 仅扫描页运行 OCR；原文本 PDF 样例仍解析出 9 项。也验证了空白文件提示、超限拦截、取消、文字修正重解析、local/API 确认保存与下游页面读取。扫描样例出现过单位误识别和标题被当作项目，需在预览或原始文字中修正；没有宣称对任意医院报告都能准确识别。
 
 ## 报告纠错与查找：version6-report-edit-search
 
@@ -48,7 +93,7 @@
 - Profile 展示存储说明与医疗边界，开发工具默认折叠。同步覆盖后端前需要确认。
 - 修复详情页重复进入后解释事件重复绑定的问题。
 
-**当前目录的实际边界**：本版本没有认证模块或用户隔离，不应当作已经具备 JWT 登录的版本，也不能用于存储真实敏感医疗数据。未新增登录、OCR 或其他大型功能。
+**该历史版本的边界**：version5 未新增登录或 OCR。当前目录仍没有认证模块或用户隔离，不应当作已经具备 JWT 登录的版本，也不能用于存储真实敏感医疗数据；OCR 状态以文首新版本说明为准。
 
 ### 回归测试
 
@@ -56,7 +101,8 @@
 
 ```bash
 node --check app.js
-node --test tests/frontend.test.cjs
+node --check ocr.js
+node --test tests/frontend.test.cjs tests/ocr.test.cjs
 ```
 
 后端测试使用临时 SQLite 数据库，不修改 `backend/data/med_reports.db`，也不调用真实 AI：
@@ -107,6 +153,7 @@ node --test tests/frontend.test.cjs
 - 报告编辑与纠错（保留原 ID 和患者信息）
 - 报告搜索、类型/状态/日期组合筛选
 - 文本型 PDF 本地解析
+- 扫描件 / 图片型 PDF / PNG / JPG / WebP 本地 OCR 与核对预览
 - 参考范围自动填充
 - 检验项目别名归一化
 - 异常状态判断
@@ -131,7 +178,7 @@ node --test tests/frontend.test.cjs
 - FastAPI
 - SQLite
 - 无 React / Vue
-- 无真实 OCR
+- Tesseract.js 本地 OCR（不使用云识别服务）
 - DeepSeek AI 后端代理
 
 ## 如何本地运行
@@ -478,7 +525,7 @@ upload 页面支持上传文本型 PDF。这里的 PDF 必须本身包含可复�
 2. 浏览器本地通过 PDF.js 读取文本，不上传服务器。
 3. 系统调用 `parsePdfReportText(text)` 解析报告基础信息和检验项目。
 4. 解析结果进入预览区，用户可编辑报告信息、患者信息和项目数据。
-5. 用户点击“确认保存解析结果”后，才会写入标准 `report` 数据结构和 `lab_reports_v2`。
+5. 用户点击“确认保存解析结果”后，才会按当前数据模式写入标准 `report` 数据结构：local 保存至 `lab_reports_v2`，API 保存至后端。
 
 upload 页面也支持“粘贴报告文本解析”：
 
@@ -491,13 +538,13 @@ upload 页面也支持“粘贴报告文本解析”：
 
 当前实现边界：
 
-- 这是纯文本 PDF 解析，不是 OCR。
+- 文本提取分支不是 OCR；扫描页自动切换本地 OCR，详见文首说明。
 - 支持可复制文字的 PDF。
-- 不支持扫描件、拍照件或图片型 PDF。
+- 扫描件、报告图片和图片型 PDF 可使用本地 OCR，但准确率受清晰度、方向和版式影响。
 - PDF 文件只在浏览器本地解析，不上传服务器。
 - 解析结果不会自动保存，必须由用户在预览区核对并点击“确认保存解析结果”。
-- 解析出的报告会进入现有标准 `report` 数据结构，并保存到 `lab_reports_v2`。
-- 如果 PDF 无文本或检验项目无法识别，页面会提示改用手动录入。
+- 解析出的报告会进入现有标准 `report` 数据结构，按当前 local/API 模式保存。
+- 如果文字提取和 OCR 都无法得到有效项目，可修正 OCR 原始文字或改用手动录入。
 
 当前支持的常见文本格式：
 
@@ -537,10 +584,9 @@ vendor/pdfjs/standard_fonts/
 
 ## 当前限制
 
-- 当前只是前端 MVP。
+- 当前是浏览器前端和可选 FastAPI 后端组成的 MVP，不适合医疗生产使用。
 - 文本型 PDF 解析只适配简单检验报告，复杂表格可能需要手动修正。
-- 扫描件和图片型 PDF 暂不支持，需要 Phase 2 接入 OCR。
-- 当前不支持复杂表格 OCR、图片识别、手写识别。
+- 扫描件和图片型 PDF 的本地 OCR 需要人工核对；不保证复杂表格、手写、模糊或旋转图片的识别效果。
 - AI 解读和 AI 对话支持 DeepSeek 后端代理，但仍保留本地规则 fallback。
 - localStorage 不适合生产环境存储敏感医疗数据。
 - 不支持用户登录。
@@ -605,13 +651,15 @@ vendor/pdfjs/standard_fonts/
 1. 后端未启动时，前端显示连接错误。
 2. AI key 未配置时，AI fallback 正常。
 3. API 模式请求失败时，不覆盖 localStorage。
-4. PDF 扫描件或无文本 PDF 提示不支持 OCR。
+4. PDF 扫描件进入 OCR 核对预览；完全空白文件提示无有效文字，OCR 失败可重试或手动录入。
 5. 控制台没有未捕获 JavaScript error。
 
 ### 代码检查
 
 ```bash
 node --check app.js
+node --check ocr.js
+node --test tests/frontend.test.cjs tests/ocr.test.cjs
 python3 -m py_compile backend/main.py backend/database.py backend/models.py backend/schemas.py backend/ai_service.py backend/ai_routes.py
 ```
 
@@ -619,6 +667,6 @@ python3 -m py_compile backend/main.py backend/database.py backend/models.py back
 
 ## 后续路线
 
-- Phase 2：OCR / 扫描件识别
+- 本地 OCR 已加入；后续优先收集真实版式误识别反馈和核对体验，不默认扩展云识别。
 - Phase 3：登录、隐私、安全、部署
 - Phase 4：RAG 医学知识库和更完整的医疗安全审计

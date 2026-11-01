@@ -1487,3 +1487,19 @@ button, .outline-btn, .primary-btn { touch-action: manipulation; }
 .upload-item-table input { min-height: 40px; border: 1px solid var(--line); border-radius: 5px; background: #fff; padding: 8px; font-weight: 400; }
 .upload-item-table .trash { min-height: 36px; width: 100%; border-radius: 5px; background: var(--red-soft); }
 .upload-note.reference-note { max-width: none; margin: 0 0 12px !important; font-weight: 400; }
+.ocr-mode-option, .ocr-verification { display: flex; align-items: flex-start; gap: 8px; margin-top: 16px; color: #536d78; font-size: 12px; line-height: 1.8; text-align: left; }
+.ocr-mode-option input, .ocr-verification input { flex: 0 0 auto; margin: 5px 0 0; accent-color: var(--teal); width: 16px; height: 16px; }
+.upload-hero .ocr-privacy-note { margin: 12px 0 0; text-align: left; font-size: 11px; line-height: 1.8; }
+.pdf-parse-status { flex-wrap: wrap; }
+.pdf-parse-status p { flex: 1; min-width: 150px; }
+.ocr-review-warning { padding: 12px; border-left: 3px solid #bd8c49; background: #fbf6ec; color: #796347; font-size: 12px; line-height: 1.8; }
+.ocr-text-review { margin-top: 14px; color: #627c85; font-size: 12px; }
+.ocr-text-review summary { cursor: pointer; min-height: 36px; padding: 8px 0; }
+.ocr-text-review label { display: grid; gap: 8px; }
+.ocr-text-review textarea { width: 100%; min-width: 0; resize: vertical; min-height: 180px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; font: inherit; line-height: 1.8; color: var(--ink); background: #fff; }
+.ocr-text-review button { margin-top: 10px; }
+.ocr-verification { padding: 10px; border: 1px solid var(--line); border-radius: 6px; }
+.ocr-unit-warning { display: block; margin-top: 5px; color: #916323; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.ocr-unit-warning[hidden] { display: none; }
+.pdf-preview-card .pdf-preview-head { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.pdf-preview-head .pdf-confidence-badge { max-width: 100%; justify-self: start; padding: 6px 10px; border-radius: 6px; }
